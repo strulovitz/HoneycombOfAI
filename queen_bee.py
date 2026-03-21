@@ -1,102 +1,269 @@
-# QueenBeeModule — Split Big AI Jobs Into Small Tasks and Combine Results
+"""
+QueenBeeModule — Split Big AI Jobs Into Small Tasks and Combine Results
+=======================================================================
+The Queen Bee is the brain of each Hive. She receives the full task (Nectar)
+from the Beekeeper, splits it into independent sub-tasks, assigns them to
+Worker Bees, collects their results, and combines them into the final
+answer (Honey).
+"""
+
+from ollama_client import OllamaClient
+from worker_bee import WorkerBee
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+import concurrent.futures
+import time
+
+console = Console()
 
 
-class QueenBeeModule:
+class QueenBee:
     """
-    The QueenBee is the coordinator of a Hive. She receives full AI jobs
-    (Nectars) from Beekeepers, intelligently splits them into sub-tasks,
-    distributes the sub-tasks to available Worker Bees, waits for all
-    results, and combines them into a single polished final answer (Honey).
+    The Queen Bee manages a Hive of Worker Bees.
 
-    The QueenBee earns a coordination fee on top of the processing fees
-    paid to individual Worker Bees.
+    She is responsible for:
+    1. Splitting a big task (Nectar) into small independent sub-tasks
+    2. Assigning sub-tasks to Worker Bees
+    3. Collecting results from all Worker Bees
+    4. Combining results into one final answer (Honey)
     """
 
-    def __init__(self, config: dict):
-        """
-        Initialize the QueenBeeModule with configuration from config.yaml.
-
-        Args:
-            config: The full parsed config dictionary. Relevant keys:
-                    config['server']['url']     — BeehiveOfAI server to connect to
-                    config['queen']['min_workers'] — minimum workers before accepting jobs
-        """
-        self.config = config
-        self.server_url = config["server"]["url"]
-        self.min_workers = config["queen"]["min_workers"]
+    def __init__(self, model_name: str = "llama3.2:3b",
+                 ollama_url: str = "http://localhost:11434", temperature: float = 0.5):
+        self.model_name = model_name
+        self.temperature = temperature
+        self.ai = OllamaClient(base_url=ollama_url)
+        self.workers: list[WorkerBee] = []
 
     def start(self):
-        """
-        Start the QueenBee and enter the main job-listening loop.
+        """Start the Queen Bee and verify AI connection."""
+        console.print(Panel(
+            f"[bold magenta]👑 Queen Bee started![/]\n"
+            f"Model: {self.model_name}\n"
+            f"Workers in Hive: {len(self.workers)}",
+            title="Queen Bee",
+            border_style="magenta"
+        ))
 
-        In the future this will:
-        1. Authenticate with the BeehiveOfAI server.
-        2. Announce the Hive as open for business (with metadata: models supported,
-           pricing, geographic region).
-        3. Maintain a registry of currently connected Worker Bees.
-        4. Accept incoming job requests from Beekeepers.
-        5. Enforce the min_workers threshold before starting any job.
-        """
-        print("👑 QueenBee Module started! Ready to manage a Hive.")
+        if self.ai.is_available():
+            console.print(f"  ✅ Connected to Ollama")
+        else:
+            console.print(f"  ❌ [red]Cannot connect to Ollama! Is it running?[/]")
+            return False
+        return True
 
-    def split_task(self, nectar_text: str) -> list[str]:
-        """
-        Intelligently split a large AI task into smaller, independent sub-tasks.
+    def add_worker(self, worker: WorkerBee):
+        """Add a Worker Bee to this Hive."""
+        self.workers.append(worker)
+        console.print(f"  🐝 Worker [{worker.worker_id}] joined the Hive (total: {len(self.workers)})")
 
-        In the future this will:
-        1. Use a lightweight LLM call (or rule-based heuristics) to analyze the task.
-        2. Identify natural decomposition points (e.g., "from three perspectives"
-           → three separate sub-tasks).
-        3. Ensure each sub-task is self-contained and answerable without context
-           from the others.
-        4. Assign a token budget to each sub-task based on available workers.
-        5. Return a list of sub-task strings ready for distribution.
+    def split_task(self, nectar: str, num_subtasks: int = None) -> list[str]:
+        """
+        Split a big task (Nectar) into small independent sub-tasks.
+
+        Uses the AI model to intelligently decompose the task.
 
         Args:
-            nectar_text: The full original task submitted by the Beekeeper.
+            nectar: The full task/question from the Beekeeper
+            num_subtasks: How many sub-tasks to create (default: number of workers)
 
         Returns:
-            A list of sub-task strings.
+            A list of sub-task strings
         """
-        return [
-            f"Sub-task 1 of: {nectar_text[:40]}...",
-            f"Sub-task 2 of: {nectar_text[:40]}...",
-            f"Sub-task 3 of: {nectar_text[:40]}...",
-        ]
+        if num_subtasks is None:
+            num_subtasks = len(self.workers) if self.workers else 3
 
-    def assign_subtasks(self, subtasks: list[str], workers: list) -> None:
+        console.print(Panel(
+            f"[bold]Splitting Nectar into {num_subtasks} sub-tasks...[/]\n"
+            f"Nectar: [italic]{nectar}[/]",
+            title="🌸 Task Splitting",
+            border_style="cyan"
+        ))
+
+        prompt = f"""You are a task manager. Your job is to split one big task into exactly {num_subtasks} smaller independent sub-tasks.
+
+IMPORTANT RULES:
+- Each sub-task must be INDEPENDENT — it can be completed without knowing the results of other sub-tasks
+- Each sub-task should cover a DIFFERENT aspect or part of the main task
+- Each sub-task should be SPECIFIC and CLEAR
+- Together, all sub-tasks should fully cover the original task
+
+The main task is: {nectar}
+
+Return ONLY a JSON array of {num_subtasks} strings, each being one sub-task. Example format:
+["first sub-task description", "second sub-task description", "third sub-task description"]
+
+Your JSON array:"""
+
+        subtasks = self.ai.ask_for_json_list(
+            prompt=prompt,
+            model=self.model_name,
+            temperature=0.3  # Low temperature for structured output
+        )
+
+        # Ensure we have the right number of subtasks
+        if len(subtasks) < num_subtasks:
+            # If AI returned fewer, pad with generic tasks
+            for i in range(len(subtasks), num_subtasks):
+                subtasks.append(f"Provide additional details about: {nectar} (aspect {i+1})")
+        elif len(subtasks) > num_subtasks:
+            subtasks = subtasks[:num_subtasks]
+
+        # Display the sub-tasks
+        table = Table(title="Sub-tasks Created", border_style="cyan")
+        table.add_column("#", style="bold")
+        table.add_column("Sub-task", style="italic")
+        for i, task in enumerate(subtasks):
+            table.add_row(str(i + 1), task[:100] + ("..." if len(task) > 100 else ""))
+        console.print(table)
+
+        return subtasks
+
+    def assign_and_process(self, subtasks: list[str]) -> list[dict]:
         """
-        Distribute sub-tasks across available Worker Bees.
+        Assign sub-tasks to Worker Bees and process them IN PARALLEL.
 
-        In the future this will:
-        1. Sort workers by current load, latency, and reliability score.
-        2. Assign each sub-task to the best available worker.
-        3. Track which worker has which sub-task.
-        4. Set a timeout per sub-task and reassign if a worker goes offline.
-        5. Support batching: if there are more sub-tasks than workers, queue the rest.
+        This is where the magic happens — all workers process their
+        sub-tasks at the same time, not one after another!
 
         Args:
-            subtasks: List of sub-task strings to distribute.
-            workers: List of connected WorkerBeeModule instances (or worker IDs).
-        """
-        pass
-
-    def combine_results(self, results_list: list[str]) -> str:
-        """
-        Combine multiple sub-task results into one coherent final answer (Honey).
-
-        In the future this will:
-        1. Order the results according to the original sub-task sequence.
-        2. Optionally run a synthesis LLM call to weave them into a unified narrative.
-        3. Remove redundant information and fix any contradictions between results.
-        4. Format the final answer according to the Beekeeper's requested output format
-           (plain text, JSON, markdown, etc.).
-        5. Calculate the total token cost for billing.
-
-        Args:
-            results_list: List of response strings from each Worker Bee.
+            subtasks: List of sub-task strings
 
         Returns:
-            A single combined answer string.
+            List of dicts with 'worker_id', 'subtask', and 'result'
         """
-        return " | ".join(results_list)
+        console.print(Panel(
+            f"[bold]Assigning {len(subtasks)} sub-tasks to {len(self.workers)} workers...[/]",
+            title="📋 Task Assignment",
+            border_style="green"
+        ))
+
+        results = []
+        start_time = time.time()
+
+        # Process ALL sub-tasks in parallel using threads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.workers)) as executor:
+            # Create a mapping of future -> (worker, subtask)
+            future_to_task = {}
+            for i, subtask in enumerate(subtasks):
+                worker = self.workers[i % len(self.workers)]
+                future = executor.submit(worker.process_subtask, subtask)
+                future_to_task[future] = (worker, subtask)
+
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_task):
+                worker, subtask = future_to_task[future]
+                try:
+                    result = future.result()
+                    results.append({
+                        "worker_id": worker.worker_id,
+                        "subtask": subtask,
+                        "result": result
+                    })
+                except Exception as e:
+                    results.append({
+                        "worker_id": worker.worker_id,
+                        "subtask": subtask,
+                        "result": f"[ERROR] {str(e)}"
+                    })
+
+        elapsed = time.time() - start_time
+        console.print(f"  ⏱️  All {len(subtasks)} sub-tasks completed in {elapsed:.1f} seconds")
+
+        return results
+
+    def combine_results(self, nectar: str, results: list[dict]) -> str:
+        """
+        Combine all Worker Bee results into one final answer (Honey).
+
+        Uses the AI model to intelligently merge and organize the results.
+
+        Args:
+            nectar: The original task/question
+            results: List of worker results
+
+        Returns:
+            The final combined answer (Honey)
+        """
+        console.print(Panel(
+            "[bold]Combining all results into Honey...[/]",
+            title="🍯 Making Honey",
+            border_style="yellow"
+        ))
+
+        # Format results for the prompt
+        formatted = ""
+        for i, r in enumerate(results):
+            formatted += f"\n--- Result from Worker {r['worker_id']} ---\n"
+            formatted += f"Sub-task: {r['subtask']}\n"
+            formatted += f"Answer: {r['result']}\n"
+
+        prompt = f"""You are a manager combining results from multiple workers into one final comprehensive answer.
+
+The original question was: {nectar}
+
+Here are the results from each worker:
+{formatted}
+
+Please combine all these results into ONE well-organized, coherent final answer.
+- Do NOT repeat information that appears in multiple results
+- Organize the information logically with clear sections
+- Make it read as one unified document, not as separate pieces
+- Keep all important details from every worker's contribution
+
+Your combined final answer:"""
+
+        honey = self.ai.ask(
+            prompt=prompt,
+            model=self.model_name,
+            temperature=self.temperature
+        )
+
+        return honey
+
+    def process_nectar(self, nectar: str) -> str:
+        """
+        The complete pipeline: receive Nectar, produce Honey.
+
+        This is the main method that runs the entire process:
+        1. Split the Nectar into sub-tasks
+        2. Assign sub-tasks to Worker Bees (in parallel)
+        3. Combine results into Honey
+        4. Return the Honey
+
+        Args:
+            nectar: The full task/question from the Beekeeper
+
+        Returns:
+            The final answer (Honey)
+        """
+        console.print(Panel(
+            f"[bold green]🌸 New Nectar received![/]\n\n[italic]{nectar}[/]",
+            title="Incoming Nectar",
+            border_style="green"
+        ))
+
+        total_start = time.time()
+
+        # Step 1: Split
+        subtasks = self.split_task(nectar)
+
+        # Step 2: Assign and process in parallel
+        results = self.assign_and_process(subtasks)
+
+        # Step 3: Combine into Honey
+        honey = self.combine_results(nectar, results)
+
+        total_elapsed = time.time() - total_start
+
+        console.print(Panel(
+            f"[bold yellow]🍯 Honey is ready![/]\n"
+            f"Total time: {total_elapsed:.1f} seconds\n"
+            f"Workers used: {len(self.workers)}\n"
+            f"Sub-tasks processed: {len(results)}",
+            title="🍯 Honey Delivered",
+            border_style="yellow"
+        ))
+
+        return honey
