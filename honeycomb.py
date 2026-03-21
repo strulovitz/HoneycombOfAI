@@ -26,6 +26,7 @@ from ollama_client import OllamaClient
 from worker_bee import WorkerBee
 from queen_bee import QueenBee
 from beekeeper import Beekeeper
+from api_client import BeehiveAPIClient
 
 console = Console()
 
@@ -106,14 +107,40 @@ def main():
             ollama_url=config["model"]["base_url"],
             temperature=config["model"]["temperature"]
         )
+        # Add default worker bees
+        num_workers = config["queen"].get("min_workers", 2)
+        for i in range(num_workers):
+            worker = WorkerBee(
+                worker_id=f"worker-{i+1:03d}",
+                model_name=config["model"]["worker_model"],
+                ollama_url=config["model"]["base_url"],
+                temperature=config["model"]["temperature"]
+            )
+            queen.add_worker(worker)
         queen.start()
-        console.print("\n[magenta]Queen Bee is waiting for Nectar...[/]")
-        console.print("[dim]Press Ctrl+C to stop.[/]")
-        try:
-            while True:
-                pass
-        except KeyboardInterrupt:
-            console.print("\n[magenta]Queen Bee stopped.[/]")
+
+        # Connect to the BeehiveOfAI website
+        server_url = config["server"]["url"]
+        auth = config.get("auth", {})
+        email = auth.get("email")
+        password = auth.get("password")
+        hive_id = auth.get("hive_id", 1)
+
+        if not email or not password:
+            console.print("[red]❌ No auth credentials in config.yaml. Add 'auth' section with email/password/hive_id.[/]")
+            sys.exit(1)
+
+        api = BeehiveAPIClient(server_url)
+        if not api.check_connection():
+            console.print(f"[red]❌ Cannot connect to BeehiveOfAI website at {server_url}[/]")
+            console.print("[dim]Make sure the website is running: python app.py[/]")
+            sys.exit(1)
+
+        console.print(f"[green]✅ Connected to BeehiveOfAI at {server_url}[/]")
+        user_info = api.login(email, password)
+        console.print(f"[green]✅ Logged in as {user_info['username']} ({user_info['role']})[/]")
+
+        queen.process_from_website(api, hive_id)
 
     elif mode == "beekeeper":
         bk = Beekeeper(company_name="My Company")

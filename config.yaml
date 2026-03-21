@@ -34,3 +34,9 @@ queen:
 # Beekeeper settings
 beekeeper:
   max_budget_per_job: 1.00
+
+# Authentication for website connection (used by Queen Bee mode)
+auth:
+  email: "queen1@test.com"
+  password: "test123"
+  hive_id: 1

@@ -14,6 +14,9 @@ from rich.panel import Panel
 from rich.table import Table
 import concurrent.futures
 import time
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from api_client import BeehiveAPIClient
 
 console = Console()
 
@@ -221,6 +224,68 @@ Your combined final answer:"""
         )
 
         return honey
+
+    def process_from_website(self, api: 'BeehiveAPIClient', hive_id: int, poll_interval: int = 10):
+        """Poll the website for new jobs and process them automatically."""
+        console.print(f"\n[bold yellow]👑 Queen Bee connected to website — polling Hive #{hive_id}[/bold yellow]")
+        console.print(f"[dim]Checking for new jobs every {poll_interval} seconds. Press Ctrl+C to stop.[/dim]\n")
+
+        while True:
+            try:
+                jobs = api.get_pending_jobs(hive_id)
+
+                if not jobs:
+                    console.print(f"[dim]No pending jobs. Waiting {poll_interval}s...[/dim]")
+                    time.sleep(poll_interval)
+                    continue
+
+                for job_data in jobs:
+                    job_id = job_data['id']
+                    nectar = job_data['nectar']
+                    console.print(f"\n[bold green]🍯 New job #{job_id} received![/bold green]")
+                    console.print(f"[dim]Nectar: {nectar[:100]}{'...' if len(nectar) > 100 else ''}[/dim]")
+
+                    try:
+                        # Step 1: Claim the job
+                        api.claim_job(job_id)
+                        console.print(f"[yellow]  ✂️  Splitting task...[/yellow]")
+
+                        # Step 2: Split task into subtasks
+                        subtasks = self.split_task(nectar)
+                        website_subtasks = api.create_subtasks(job_id, subtasks)
+
+                        # Step 3: Process subtasks in parallel
+                        api.update_job_status(job_id, 'processing')
+                        console.print(f"[yellow]  ⚡ Processing {len(subtasks)} sub-tasks in parallel...[/yellow]")
+                        results = self.assign_and_process(subtasks)
+
+                        # Step 4: Upload subtask results to website
+                        for i, ws in enumerate(website_subtasks):
+                            if i < len(results):
+                                api.submit_subtask_result(ws['id'], results[i]['result'])
+
+                        # Step 5: Combine results into Honey
+                        api.update_job_status(job_id, 'combining')
+                        console.print(f"[yellow]  🔗 Combining results...[/yellow]")
+                        honey = self.combine_results(nectar, results)
+
+                        # Step 6: Upload Honey and mark complete
+                        api.complete_job(job_id, honey)
+                        console.print(f"[bold green]  ✅ Job #{job_id} completed![/bold green]")
+
+                    except Exception as e:
+                        console.print(f"[bold red]  ❌ Job #{job_id} failed: {e}[/bold red]")
+                        try:
+                            api.update_job_status(job_id, 'failed')
+                        except Exception:
+                            pass
+
+            except KeyboardInterrupt:
+                console.print("\n[bold yellow]👑 Queen Bee shutting down.[/bold yellow]")
+                break
+            except Exception as e:
+                console.print(f"[red]Error polling: {e}. Retrying in {poll_interval}s...[/red]")
+                time.sleep(poll_interval)
 
     def process_nectar(self, nectar: str) -> str:
         """
