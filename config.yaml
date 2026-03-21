@@ -1,0 +1,33 @@
+# HoneycombOfAI Configuration
+# ============================
+
+# Which mode to run: worker, queen, or beekeeper
+mode: worker
+
+# Connection to the BeehiveOfAI website
+server:
+  url: "http://localhost:5000"
+  # For public use, this will be: https://beehiveofai.com
+
+# AI Model settings
+model:
+  # Which local LLM backend to use: ollama, lmstudio, llamacpp, vllm
+  backend: ollama
+  # Which model to use (must be installed in your backend)
+  name: "llama3.2:3b"
+  # For testing, we use a small model. For production, use larger models.
+
+# Worker Bee settings
+worker:
+  # How many sub-tasks to process at once
+  max_concurrent_tasks: 1
+
+# Queen Bee settings
+queen:
+  # Minimum number of workers needed to start a job
+  min_workers: 2
+
+# Beekeeper settings
+beekeeper:
+  # Maximum budget per job in dollars
+  max_budget_per_job: 1.00
