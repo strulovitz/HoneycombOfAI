@@ -69,6 +69,34 @@ class BeehiveAPIClient:
         r.raise_for_status()
         return r.json()
 
+    def get_available_subtasks(self, hive_id: int) -> list:
+        """Worker polls this to find pending subtasks in a hive."""
+        r = requests.get(f"{self.server_url}/api/hive/{hive_id}/subtasks/available",
+                         headers=self._headers())
+        r.raise_for_status()
+        return r.json().get('subtasks', [])
+
+    def claim_subtask(self, subtask_id: int) -> dict:
+        """Worker claims a specific subtask (marks it as assigned to this worker)."""
+        r = requests.put(f"{self.server_url}/api/subtask/{subtask_id}/claim",
+                         headers=self._headers())
+        r.raise_for_status()
+        return r.json()
+
+    def get_job_subtasks(self, job_id: int) -> list:
+        """Get all subtasks for a job with their statuses and results."""
+        r = requests.get(f"{self.server_url}/api/job/{job_id}/subtasks",
+                         headers=self._headers())
+        r.raise_for_status()
+        return r.json().get('subtasks', [])
+
+    def heartbeat(self) -> dict:
+        """Worker sends a heartbeat to show it is online."""
+        r = requests.post(f"{self.server_url}/api/worker/heartbeat",
+                          headers=self._headers())
+        r.raise_for_status()
+        return r.json()
+
     def check_connection(self) -> bool:
         """Check if the website is reachable."""
         try:

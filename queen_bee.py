@@ -225,8 +225,52 @@ Your combined final answer:"""
 
         return honey
 
+    def wait_for_subtasks(self, api: 'BeehiveAPIClient', job_id: int,
+                          subtask_ids: list, timeout: int = 300, check_interval: int = 5) -> list:
+        """
+        Wait for all subtasks to be completed by distributed workers.
+
+        Polls the website until all subtasks have status='completed' or until
+        the timeout is reached (default 5 minutes).
+
+        Returns:
+            List of dicts with 'subtask', 'result', 'worker_id' for each completed subtask.
+        """
+        console.print(f"  [yellow]⏳ Waiting for {len(subtask_ids)} subtask(s) to be completed by workers...[/yellow]")
+        start_time = time.time()
+
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                console.print(f"  [red]❌ Timeout waiting for subtasks after {timeout}s[/red]")
+                raise TimeoutError(f"Subtasks not completed within {timeout} seconds")
+
+            subtasks = api.get_job_subtasks(job_id)
+            # Only check the subtasks we created (by ID)
+            relevant = [st for st in subtasks if st['id'] in subtask_ids]
+            completed = [st for st in relevant if st['status'] == 'completed']
+            pending = [st for st in relevant if st['status'] != 'completed']
+
+            console.print(
+                f"  [dim]Progress: {len(completed)}/{len(relevant)} subtasks done "
+                f"({int(elapsed)}s elapsed)[/dim]"
+            )
+
+            if len(completed) == len(relevant):
+                console.print(f"  [bold green]✅ All {len(relevant)} subtasks completed by workers![/bold green]")
+                return [
+                    {
+                        "subtask": st['subtask_text'],
+                        "result": st['result_text'] or '',
+                        "worker_id": str(st.get('worker_id', 'unknown'))
+                    }
+                    for st in completed
+                ]
+
+            time.sleep(check_interval)
+
     def process_from_website(self, api: 'BeehiveAPIClient', hive_id: int, poll_interval: int = 10):
-        """Poll the website for new jobs and process them automatically."""
+        """Poll the website for new jobs and coordinate distributed workers to process them."""
         console.print(f"\n[bold yellow]👑 Queen Bee connected to website — polling Hive #{hive_id}[/bold yellow]")
         console.print(f"[dim]Checking for new jobs every {poll_interval} seconds. Press Ctrl+C to stop.[/dim]\n")
 
@@ -248,25 +292,23 @@ Your combined final answer:"""
                     try:
                         # Step 1: Claim the job
                         api.claim_job(job_id)
-                        console.print(f"[yellow]  ✂️  Splitting task...[/yellow]")
+                        console.print(f"[yellow]  ✂️  Splitting task into subtasks...[/yellow]")
 
-                        # Step 2: Split task into subtasks
+                        # Step 2: Split task into subtasks using AI
                         subtasks = self.split_task(nectar)
                         website_subtasks = api.create_subtasks(job_id, subtasks)
+                        subtask_ids = [ws['id'] for ws in website_subtasks]
+                        console.print(f"[yellow]  📋 Created {len(subtask_ids)} subtasks on website — workers will pick them up![/yellow]")
 
-                        # Step 3: Process subtasks in parallel
+                        # Step 3: Update status to 'processing' so workers know to start
                         api.update_job_status(job_id, 'processing')
-                        console.print(f"[yellow]  ⚡ Processing {len(subtasks)} sub-tasks in parallel...[/yellow]")
-                        results = self.assign_and_process(subtasks)
 
-                        # Step 4: Upload subtask results to website
-                        for i, ws in enumerate(website_subtasks):
-                            if i < len(results):
-                                api.submit_subtask_result(ws['id'], results[i]['result'])
+                        # Step 4: Wait for distributed workers to complete the subtasks
+                        results = self.wait_for_subtasks(api, job_id, subtask_ids)
 
                         # Step 5: Combine results into Honey
                         api.update_job_status(job_id, 'combining')
-                        console.print(f"[yellow]  🔗 Combining results...[/yellow]")
+                        console.print(f"[yellow]  🔗 Combining results from all workers...[/yellow]")
                         honey = self.combine_results(nectar, results)
 
                         # Step 6: Upload Honey and mark complete

@@ -85,21 +85,38 @@ def main():
 
     # Start the appropriate module
     if mode == "worker":
+        worker_cfg = config.get("worker", {})
         worker = WorkerBee(
-            worker_id=config["worker"]["worker_id"],
+            worker_id=worker_cfg.get("worker_id", "worker-001"),
             model_name=config["model"]["worker_model"],
             ollama_url=config["model"]["base_url"],
             temperature=config["model"]["temperature"]
         )
-        worker.start()
-        console.print("\n[yellow]Worker Bee is waiting for tasks...[/]")
-        console.print("[dim]In the full system, tasks would arrive from the Queen Bee over the network.[/]")
-        console.print("[dim]Press Ctrl+C to stop.[/]")
-        try:
-            while True:
-                pass
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Worker Bee stopped.[/]")
+        if not worker.start():
+            sys.exit(1)
+
+        # Connect to the BeehiveOfAI website
+        server_url = config["server"]["url"]
+        email = worker_cfg.get("email")
+        password = worker_cfg.get("password")
+        hive_id = worker_cfg.get("hive_id", 1)
+        poll_interval = worker_cfg.get("poll_interval", 5)
+
+        if not email or not password:
+            console.print("[red]❌ No worker credentials in config.yaml. Add email/password under 'worker:' section.[/]")
+            sys.exit(1)
+
+        api = BeehiveAPIClient(server_url)
+        if not api.check_connection():
+            console.print(f"[red]❌ Cannot connect to BeehiveOfAI website at {server_url}[/]")
+            console.print("[dim]Make sure the website is running on the desktop: python app.py[/]")
+            sys.exit(1)
+
+        console.print(f"[green]✅ Connected to BeehiveOfAI at {server_url}[/]")
+        user_info = api.login(email, password)
+        console.print(f"[green]✅ Logged in as {user_info['username']} ({user_info['role']})[/]")
+
+        worker.run_from_website(api, hive_id, poll_interval)
 
     elif mode == "queen":
         queen = QueenBee(

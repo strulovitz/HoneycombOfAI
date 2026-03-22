@@ -1,9 +1,17 @@
 # HoneycombOfAI Configuration
 # ============================
 # Beehive Of AI — Personal Computers Working Together as One Powerful AI
+#
+# DESKTOP (Living Room) — Queen Bee mode
+#   mode: queen
+#   server.url: http://localhost:5000
+#
+# LAPTOP (Bedroom) — Worker Bee mode
+#   mode: worker
+#   server.url: http://10.0.0.4:5000
 
 # Which mode to run: worker, queen, or beekeeper
-mode: worker
+mode: queen
 
 # Connection to the BeehiveOfAI website
 server:
@@ -16,17 +24,19 @@ model:
   # Model used by Worker Bees for processing sub-tasks
   worker_model: "llama3.2:3b"
   # Model used by Queen Bee for splitting tasks and combining results
-  # (In production this would be a larger model; for testing we use the same small one)
   queen_model: "llama3.2:3b"
   # Temperature: lower = more focused, higher = more creative
   temperature: 0.7
 
-# Worker Bee settings
+# Worker Bee settings (used when mode: worker)
 worker:
-  max_concurrent_tasks: 1
-  worker_id: "worker-001"
+  worker_id: "worker-desktop-001"
+  hive_id: 1
+  poll_interval: 5
+  email: "worker1@test.com"
+  password: "test123"
 
-# Queen Bee settings
+# Queen Bee settings (used when mode: queen)
 queen:
   min_workers: 2
   max_workers: 10
