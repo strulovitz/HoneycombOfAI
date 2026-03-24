@@ -45,7 +45,7 @@ Works with any of the popular local AI runners:
 | Backend | Notes |
 |---------|-------|
 | **Ollama** | Recommended — easiest setup |
-| **LM Studio** | Great GUI for beginners |
+| **LM Studio** | Great GUI for beginners. **Linux users:** you must manually start the local server in LM Studio's Developer tab (Windows does this automatically) |
 | **llama.cpp** | Lowest resource usage |
 | **vLLM** | Best for high-throughput servers |
 
