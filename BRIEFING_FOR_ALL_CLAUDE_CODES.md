@@ -70,4 +70,32 @@ When making findings or decisions that affect the project, update ALL relevant r
 
 ---
 
+---
+
+## Phase 6 Backend Status (updated 2026-03-24 night)
+
+| Backend | Windows | Debian | Status |
+|---------|---------|--------|--------|
+| Ollama | PASS | PASS | Done |
+| LM Studio | PASS | PASS | Done (Linux needs manual server start) |
+| llama.cpp server | PASS | Not tested | Done (Windows) |
+| llama.cpp Python | PASS (CPU) | Not tested | Done (Windows) |
+| vLLM | N/A | **NOT DONE** | **Next task** |
+
+### vLLM — The Last Remaining Task
+
+vLLM is Linux-only and is the 5th and final backend for Phase 6. It needs to be installed and tested on Debian 13 (Laptop).
+
+**Plan:**
+1. Install inside `~/honeycomb-venv` (isolated, safe)
+2. `pip install vllm`
+3. Start vLLM server with a model on port 8000
+4. Run backend detector to confirm detection
+5. Run `demo_real.py` with `backend: vllm` to test full pipeline
+6. Commit and push results
+
+**Critical warning:** The RTX 5090 (Blackwell architecture) has a fragile CUDA setup on Debian. If vLLM installation wants to touch system CUDA packages or install incompatible PyTorch versions, STOP and investigate. Everything must stay inside the venv. Never touch system-level NVIDIA/CUDA packages.
+
+---
+
 Thank you! Let's keep the communication between all instances strong. The project works best when we all have the full picture.
