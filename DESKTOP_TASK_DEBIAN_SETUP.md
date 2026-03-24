@@ -126,26 +126,91 @@ And Laptop Claude Code (on Debian) takes over for:
 
 ---
 
+## CRITICAL WARNING: THE DEBIAN SETUP IS EXTREMELY FRAGILE
+
+**READ THIS BEFORE DOING ANYTHING ON DEBIAN.**
+
+The RTX 5090 uses NVIDIA's new **Blackwell architecture** — NOT the same as RTX 4090 (Ada Lovelace). Debian 13 support for it is bleeding-edge. Nir spent **multiple full days** with Claude getting CUDA and the GPU drivers working correctly on Debian. The current setup works, but it is very sensitive to version changes.
+
+**Even routine OS updates (`apt upgrade`) have broken the GPU stack in the past.**
+
+### Rules You MUST Follow:
+
+1. **NEVER run `sudo apt upgrade` or `sudo apt dist-upgrade`** — this can pull in new kernel or driver versions that break CUDA
+2. **NEVER update NVIDIA drivers, CUDA, or cuDNN** unless there is absolutely no other choice
+3. **NEVER run `sudo apt install` for something that wants to upgrade or remove CUDA-related packages** — if apt shows it wants to remove or upgrade anything CUDA/NVIDIA-related, STOP immediately and tell Nir
+4. **Pin all Python package versions** — always use `pip install package==x.y.z`, never just `pip install package`
+5. **Use a Python virtual environment** for the HoneycombOfAI project — this isolates project packages from system packages:
+   ```bash
+   python3 -m venv ~/honeycomb-venv
+   source ~/honeycomb-venv/bin/activate
+   ```
+6. **Use `pip install --no-deps` when possible** to avoid pip pulling in unwanted dependency upgrades
+7. **Run `nvidia-smi` AFTER every installation** to verify the GPU stack is still working
+8. **Before running any `apt install`**, first run it with `--dry-run` to see what it wants to change:
+   ```bash
+   sudo apt install --dry-run <package-name>
+   # Read the output carefully — if it removes or upgrades CUDA/NVIDIA packages, DO NOT proceed
+   ```
+9. **For Node.js**: prefer using `nvm` (Node Version Manager) or a standalone binary rather than apt, to avoid any risk of apt touching system packages:
+   ```bash
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+   source ~/.bashrc
+   nvm install 22
+   ```
+
+### What to Check First (Before Installing Anything):
+
+Run these commands and **save the output** — this is your "known good" baseline:
+```bash
+nvidia-smi                           # GPU driver version + CUDA version
+nvcc --version                       # CUDA compiler version
+dpkg -l | grep -i nvidia | head -20  # All installed NVIDIA packages + versions
+dpkg -l | grep -i cuda | head -20    # All installed CUDA packages + versions
+python3 --version                    # Python version
+pip3 list | grep -i -E "torch|cuda|nvidia"  # Any GPU-related Python packages
+```
+
+**If any of these look wrong or nvidia-smi fails, DO NOT install anything else. Troubleshoot the GPU stack first.**
+
+### Revised Step 6: Set Up Python Environment (USE VENV!)
+
+```bash
+# Create an isolated virtual environment
+python3 -m venv ~/honeycomb-venv
+source ~/honeycomb-venv/bin/activate
+
+# Now install project dependencies inside the venv
+cd ~/HoneycombOfAI
+pip install -r requirements.txt
+```
+
+This way, our project packages cannot interfere with system-level CUDA packages.
+
+---
+
 ## Important Notes
 
 - **Nir is a beginner** — explain every step, what it does, and what to expect
-- **NVIDIA driver installation on Debian can be tricky** — especially for the very new RTX 5090. You may need to check which driver version supports it.
-- **The RTX 5090 needs driver version 570+ or possibly newer** — Debian 13 may or may not have this in its repos yet. Be prepared to guide through the official NVIDIA installer if needed.
+- **NVIDIA drivers and CUDA are ALREADY installed and working** — Nir confirmed this. DO NOT reinstall them. Only verify they still work.
+- **The whole point of Step 1 is verification, not installation** — check that everything is still intact after the last boot
 - **Suggest improvements, don't implement automatically** — discuss with Nir before each major step
-- **If something goes wrong**, don't panic. Help Nir troubleshoot step by step.
+- **If something goes wrong**, don't panic. Help Nir troubleshoot step by step. But NEVER try to fix CUDA problems by upgrading packages.
 
 ---
 
 ## After Desktop's Job Is Done
 
 Once Claude Code is running on Debian, Nir will use it directly on the Laptop (in Debian) for:
-1. Installing vLLM (`pip install vllm`)
+1. Installing vLLM (`pip install vllm` — inside the venv, with pinned versions)
 2. Downloading a model and starting vLLM server
 3. Testing the HoneycombOfAI multi-backend system with vLLM
 4. Pushing results to GitHub
+
+**Pass along the fragile-setup warning to Laptop Claude Code on Debian** — make sure it knows about all these rules too. This information must survive the handoff.
 
 You (Desktop) can go back to your regular duties (website server, etc.).
 
 ---
 
-Thank you Desktop! This is a critical handoff step. 🐝
+Thank you Desktop! This is a critical handoff step — and protecting the Debian GPU stack is the #1 priority. 🐝
