@@ -88,14 +88,21 @@ When Nir is ready (possibly this evening), he will:
 4. Laptop Claude Code on Debian will pull this repo, run the code, and verify the vLLM backend works
 
 ### Why This Matters for You (Desktop)
-- **You do NOT need to guide the Debian/vLLM installation** — Laptop Claude Code will be present on Debian and will handle it directly
-- When Nir boots into Debian, he will NOT be in Windows, so he won't be talking to you about vLLM setup
-- Your role remains: managing the BeehiveOfAI website and any Desktop-specific tasks
+- **You DO need to guide the initial Debian setup** — Claude Code is not installed on Debian yet, so Nir will come to you first!
+- See `DESKTOP_TASK_DEBIAN_SETUP.md` for the full step-by-step guide you need to walk Nir through
+- Your job: get Nir from "fresh Debian boot" to "Claude Code running successfully"
+- Once Claude Code is running on Debian, Laptop Claude Code takes over for vLLM and project work
 - After vLLM is tested on Debian, Laptop Claude Code will push the results to this repo so you can see them
 
-### What Laptop Claude Code on Debian Will Need to Do
-1. Install Claude Code CLI on Debian 13
-2. `git pull` this repo to get all the Phase 6 code
+### What You (Desktop) Need to Help With
+1. Verify Python 3.10+, Node.js 18+, git, NVIDIA drivers, CUDA on Debian
+2. Install anything missing
+3. Install Claude Code: `npm install -g @anthropic-ai/claude-code`
+4. Help Nir authenticate Claude Code
+5. Verify it works, then hand off
+
+### What Laptop Claude Code on Debian Will Handle After That
+1. `git pull` this repo to get all the Phase 6 code
 3. Install Python dependencies: `pip install -r requirements.txt`
 4. Install vLLM: `pip install vllm` (requires Linux + CUDA)
 5. Download a model for vLLM (likely Llama 3.2 3B from HuggingFace)
