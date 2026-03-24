@@ -8,19 +8,27 @@
 #
 # LAPTOP (Bedroom) — Worker Bee mode
 #   mode: worker
-#   server.url: http://10.0.0.4:5000
+#   server.url: https://beehiveofai.com
 
 # Which mode to run: worker, queen, or beekeeper
-mode: queen
+mode: worker
 
 # Connection to the BeehiveOfAI website
 server:
-  url: "http://localhost:5000"
+  url: "https://beehiveofai.com"
 
-# AI Model settings (for Ollama backend)
+# AI Model settings
 model:
+  # Backend options: ollama, lmstudio, llamacpp-server, llamacpp-python, vllm
   backend: ollama
+  # Base URL — auto-detected from backend if not specified:
+  #   ollama:          http://localhost:11434
+  #   lmstudio:        http://localhost:1234
+  #   llamacpp-server: http://localhost:8080
+  #   vllm:            http://localhost:8000
   base_url: "http://localhost:11434"
+  # Only for llamacpp-python: path to GGUF model file
+  model_path: ""
   # Model used by Worker Bees for processing sub-tasks
   worker_model: "llama3.2:3b"
   # Model used by Queen Bee for splitting tasks and combining results
@@ -30,7 +38,7 @@ model:
 
 # Worker Bee settings (used when mode: worker)
 worker:
-  worker_id: "worker-desktop-001"
+  worker_id: "worker-laptop-001"
   hive_id: 1
   poll_interval: 5
   email: "worker1@test.com"

@@ -22,7 +22,8 @@ import sys
 from rich.console import Console
 from rich.panel import Panel
 
-from ollama_client import OllamaClient
+from backend_factory import create_backend
+from backend_detector import detect_backends, display_detected_backends
 from worker_bee import WorkerBee
 from queen_bee import QueenBee
 from beekeeper import Beekeeper
@@ -75,13 +76,21 @@ def main():
         border_style="yellow"
     ))
 
-    # Check Ollama connection
-    ai = OllamaClient(config["model"]["base_url"])
-    if not ai.is_available():
-        console.print("[bold red]❌ Cannot connect to Ollama![/]")
-        console.print("Make sure Ollama is running: http://localhost:11434")
+    # Detect and display available backends
+    detected = detect_backends()
+    display_detected_backends(detected, current_backend=config["model"].get("backend"))
+
+    # Create the configured AI backend
+    try:
+        ai = create_backend(config)
+    except ValueError as e:
+        console.print(f"[bold red]❌ Error: {e}[/]")
         sys.exit(1)
-    console.print("[green]✅ Connected to Ollama[/]")
+
+    if not ai.is_available():
+        console.print(f"[bold red]❌ Cannot connect to {ai.backend_name()}![/]")
+        sys.exit(1)
+    console.print(f"[green]✅ Connected to {ai.backend_name()}[/]")
 
     # Start the appropriate module
     if mode == "worker":
@@ -89,8 +98,8 @@ def main():
         worker = WorkerBee(
             worker_id=worker_cfg.get("worker_id", "worker-001"),
             model_name=config["model"]["worker_model"],
-            ollama_url=config["model"]["base_url"],
-            temperature=config["model"]["temperature"]
+            temperature=config["model"]["temperature"],
+            ai_backend=ai,
         )
         if not worker.start():
             sys.exit(1)
@@ -121,8 +130,8 @@ def main():
     elif mode == "queen":
         queen = QueenBee(
             model_name=config["model"]["queen_model"],
-            ollama_url=config["model"]["base_url"],
-            temperature=config["model"]["temperature"]
+            temperature=config["model"]["temperature"],
+            ai_backend=ai,
         )
         # Add default worker bees
         num_workers = config["queen"].get("min_workers", 2)
@@ -130,8 +139,8 @@ def main():
             worker = WorkerBee(
                 worker_id=f"worker-{i+1:03d}",
                 model_name=config["model"]["worker_model"],
-                ollama_url=config["model"]["base_url"],
-                temperature=config["model"]["temperature"]
+                temperature=config["model"]["temperature"],
+                ai_backend=ai,
             )
             queen.add_worker(worker)
         queen.start()

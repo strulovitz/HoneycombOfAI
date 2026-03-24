@@ -3,13 +3,13 @@ demo_website.py — Phase 4 Integration Demo
 ===========================================
 This script connects the HoneycombOfAI desktop software to the
 BeehiveOfAI website. Jobs submitted on the website get processed
-automatically by real AI (via Ollama) and the results appear on
-the website.
+automatically by real AI and the results appear on the website.
 
 BEFORE RUNNING:
-  1. Start Ollama:   ollama serve
-  2. Start website:  cd ../BeehiveOfAI && python app.py
-  3. Run this:       python demo_website.py
+  1. Start your AI backend (Ollama, LM Studio, or llama.cpp)
+  2. Set backend in config.yaml under model.backend
+  3. Start website:  cd ../BeehiveOfAI && python app.py
+  4. Run this:       python demo_website.py
 
 THEN:
   - Open http://localhost:5000 in your browser
@@ -23,11 +23,13 @@ THEN:
 
 import sys
 import time
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 
-from ollama_client import OllamaClient
+from backend_factory import create_backend
+from backend_detector import detect_backends, display_detected_backends
 from queen_bee import QueenBee
 from worker_bee import WorkerBee
 from api_client import BeehiveAPIClient
@@ -38,30 +40,8 @@ WEBSITE_URL = "http://localhost:5000"
 QUEEN_EMAIL = "queen1@test.com"
 QUEEN_PASSWORD = "test123"
 HIVE_ID = 1
-MODEL = "llama3.2:3b"
 NUM_WORKERS = 2
 POLL_INTERVAL = 8  # seconds between checking for new jobs
-
-
-def check_ollama() -> bool:
-    """Verify Ollama is running and has the required model."""
-    ai = OllamaClient()
-    if not ai.is_available():
-        console.print("[bold red]❌ Ollama is not running![/]")
-        console.print("   Start it with: [bold]ollama serve[/]")
-        return False
-
-    models = ai.list_models()
-    if MODEL not in models:
-        console.print(f"[yellow]⚠️  Model '{MODEL}' not found. Available models: {models}[/]")
-        console.print(f"   Install it with: [bold]ollama pull {MODEL}[/]")
-        if not models:
-            return False
-        console.print(f"[yellow]   Will try with: {models[0]}[/]")
-        return True  # Let it try with whatever is available
-
-    console.print(f"[green]✅ Ollama running with model: {MODEL}[/]")
-    return True
 
 
 def check_website(api: BeehiveAPIClient) -> bool:
@@ -81,6 +61,14 @@ def main():
         border_style="yellow"
     ))
 
+    # Load config
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        config = {"model": {"backend": "ollama", "worker_model": "llama3.2:3b",
+                            "queen_model": "llama3.2:3b", "temperature": 0.7}}
+
     # Step 1: Check prerequisites
     console.print(Rule("[bold]Checking Prerequisites[/]"))
     api = BeehiveAPIClient(WEBSITE_URL)
@@ -88,8 +76,22 @@ def main():
     if not check_website(api):
         sys.exit(1)
 
-    if not check_ollama():
+    # Check AI backend
+    console.print(Rule("[bold]Checking AI Backend[/]"))
+    detected = detect_backends()
+    display_detected_backends(detected, current_backend=config["model"].get("backend"))
+
+    try:
+        ai = create_backend(config)
+    except ValueError as e:
+        console.print(f"[bold red]❌ Error: {e}[/]")
         sys.exit(1)
+
+    if not ai.is_available():
+        console.print(f"[bold red]❌ Cannot connect to {ai.backend_name()}![/]")
+        sys.exit(1)
+
+    console.print(f"[green]✅ Connected to {ai.backend_name()}[/]")
 
     # Step 2: Login to the website
     console.print(Rule("[bold]Connecting to BeehiveOfAI[/]"))
@@ -102,18 +104,22 @@ def main():
 
     # Step 3: Create the Queen Bee with Worker Bees
     console.print(Rule("[bold]Starting the Hive[/]"))
-    queen = QueenBee(model_name=MODEL, temperature=0.5)
+    model_name = config["model"]["queen_model"]
+    temperature = config["model"].get("temperature", 0.5)
+
+    queen = QueenBee(model_name=model_name, temperature=temperature, ai_backend=ai)
 
     for i in range(NUM_WORKERS):
         worker = WorkerBee(
             worker_id=f"worker-{i+1:03d}",
-            model_name=MODEL,
-            temperature=0.7
+            model_name=config["model"]["worker_model"],
+            temperature=config["model"].get("temperature", 0.7),
+            ai_backend=ai,
         )
         queen.add_worker(worker)
 
     if not queen.start():
-        console.print("[bold red]❌ Queen Bee could not start. Check Ollama connection.[/]")
+        console.print(f"[bold red]❌ Queen Bee could not start. Check {ai.backend_name()} connection.[/]")
         sys.exit(1)
 
     # Step 4: Instructions for the user
@@ -127,7 +133,7 @@ def main():
         f"  5. Click [bold]Submit a Job[/]\n"
         f"  6. Type any task or question and submit\n\n"
         f"[italic]The Queen Bee will pick it up within {POLL_INTERVAL} seconds\n"
-        f"and process it with real AI. You can watch the progress\n"
+        f"and process it with {ai.backend_name()}. You can watch the progress\n"
         f"on the job status page (refresh the page to update).[/]\n\n"
         f"Press [bold]Ctrl+C[/] to stop.",
         title="Instructions",

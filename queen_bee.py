@@ -7,7 +7,7 @@ Worker Bees, collects their results, and combines them into the final
 answer (Honey).
 """
 
-from ollama_client import OllamaClient
+from ai_backend import AIBackend
 from worker_bee import WorkerBee
 from rich.console import Console
 from rich.panel import Panel
@@ -33,11 +33,17 @@ class QueenBee:
     """
 
     def __init__(self, model_name: str = "llama3.2:3b",
-                 ollama_url: str = "http://localhost:11434", temperature: float = 0.5):
+                 ollama_url: str = "http://localhost:11434", temperature: float = 0.5,
+                 ai_backend: AIBackend = None):
         self.model_name = model_name
         self.temperature = temperature
-        self.ai = OllamaClient(base_url=ollama_url)
         self.workers: list[WorkerBee] = []
+
+        if ai_backend is not None:
+            self.ai = ai_backend
+        else:
+            from ollama_client import OllamaClient
+            self.ai = OllamaClient(base_url=ollama_url)
 
     def start(self):
         """Start the Queen Bee and verify AI connection."""
@@ -50,9 +56,9 @@ class QueenBee:
         ))
 
         if self.ai.is_available():
-            console.print(f"  ✅ Connected to Ollama")
+            console.print(f"  ✅ Connected to {self.ai.backend_name()}")
         else:
-            console.print(f"  ❌ [red]Cannot connect to Ollama! Is it running?[/]")
+            console.print(f"  ❌ [red]Cannot connect to {self.ai.backend_name()}! Is it running?[/]")
             return False
         return True
 

@@ -8,7 +8,7 @@ using a local AI model (via Ollama), and returns the result.
 import time
 from typing import TYPE_CHECKING
 
-from ollama_client import OllamaClient
+from ai_backend import AIBackend
 from rich.console import Console
 from rich.panel import Panel
 
@@ -28,12 +28,19 @@ class WorkerBee:
     """
 
     def __init__(self, worker_id: str, model_name: str = "llama3.2:3b",
-                 ollama_url: str = "http://localhost:11434", temperature: float = 0.7):
+                 ollama_url: str = "http://localhost:11434", temperature: float = 0.7,
+                 ai_backend: AIBackend = None):
         self.worker_id = worker_id
         self.model_name = model_name
         self.temperature = temperature
-        self.ai = OllamaClient(base_url=ollama_url)
         self.tasks_completed = 0
+
+        if ai_backend is not None:
+            self.ai = ai_backend
+        else:
+            # Backward compatibility: create OllamaClient if no backend provided
+            from ollama_client import OllamaClient
+            self.ai = OllamaClient(base_url=ollama_url)
 
     def start(self):
         """Start the Worker Bee and verify AI connection."""
@@ -46,9 +53,9 @@ class WorkerBee:
         ))
 
         if self.ai.is_available():
-            console.print(f"  ✅ Connected to Ollama")
+            console.print(f"  ✅ Connected to {self.ai.backend_name()}")
         else:
-            console.print(f"  ❌ [red]Cannot connect to Ollama! Is it running?[/]")
+            console.print(f"  ❌ [red]Cannot connect to {self.ai.backend_name()}! Is it running?[/]")
             return False
         return True
 

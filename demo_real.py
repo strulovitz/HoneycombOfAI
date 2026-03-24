@@ -6,18 +6,20 @@ It creates one Queen Bee and three Worker Bees, all on the same machine,
 and processes a real task through the complete pipeline.
 
 Requirements:
-- Ollama must be running (http://localhost:11434)
-- Model 'llama3.2:3b' must be installed (run: ollama pull llama3.2:3b)
+- At least one AI backend must be running (Ollama, LM Studio, or llama.cpp)
+- Set the backend in config.yaml under model.backend
 """
 
 import sys
 import time
+import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 from rich import print as rprint
 
-from ollama_client import OllamaClient
+from backend_factory import create_backend
+from backend_detector import detect_backends, display_detected_backends
 from queen_bee import QueenBee
 from worker_bee import WorkerBee
 from beekeeper import Beekeeper
@@ -25,30 +27,29 @@ from beekeeper import Beekeeper
 console = Console()
 
 
-def check_ollama():
-    """Verify Ollama is running and the model is available."""
+def check_ai_backend(config):
+    """Verify the configured AI backend is available."""
     console.print(Rule("Checking AI Engine"))
-    client = OllamaClient()
 
-    if not client.is_available():
-        console.print("[bold red]❌ Ollama is not running![/]")
-        console.print("Please start Ollama first:")
-        console.print("  1. Make sure Ollama is installed (https://ollama.com)")
-        console.print("  2. It should run automatically, or open the Ollama app")
-        console.print("  3. Check by visiting http://localhost:11434 in your browser")
-        return False
+    detected = detect_backends()
+    display_detected_backends(detected, current_backend=config["model"].get("backend"))
 
-    console.print("[green]✅ Ollama is running[/]")
+    try:
+        ai = create_backend(config)
+    except ValueError as e:
+        console.print(f"[bold red]❌ Error: {e}[/]")
+        return None
 
-    models = client.list_models()
-    if not any("llama3.2" in m for m in models):
-        console.print("[bold red]❌ Model 'llama3.2:3b' not found![/]")
-        console.print("Please install it by running:")
-        console.print("  ollama pull llama3.2:3b")
-        return False
+    if not ai.is_available():
+        console.print(f"[bold red]❌ Cannot connect to {ai.backend_name()}![/]")
+        console.print(f"Make sure {ai.backend_name()} is running, then try again.")
+        return None
 
-    console.print(f"[green]✅ Available models: {', '.join(models)}[/]")
-    return True
+    console.print(f"[green]✅ Connected to {ai.backend_name()}[/]")
+    models = ai.list_models()
+    if models:
+        console.print(f"[green]✅ Available models: {', '.join(models[:5])}[/]")
+    return ai
 
 
 def run_demo():
@@ -59,7 +60,7 @@ def run_demo():
         "[italic]Personal Computers Working Together as One Powerful AI[/]\n\n"
         "This demo creates 1 Queen Bee + 3 Worker Bees on this machine.\n"
         "A Beekeeper (company) submits a task, and the Hive processes it\n"
-        "using actual AI (Ollama + llama3.2:3b).",
+        "using actual AI.",
         title="🐝 Welcome to the Hive",
         border_style="bold yellow",
         padding=(1, 2)
@@ -67,8 +68,17 @@ def run_demo():
 
     time.sleep(1)
 
-    # Check Ollama
-    if not check_ollama():
+    # Load config
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        config = {"model": {"backend": "ollama", "worker_model": "llama3.2:3b",
+                            "queen_model": "llama3.2:3b", "temperature": 0.7}}
+
+    # Check AI backend
+    ai = check_ai_backend(config)
+    if ai is None:
         sys.exit(1)
 
     time.sleep(0.5)
@@ -77,7 +87,11 @@ def run_demo():
     console.print(Rule("Setting Up the Hive"))
 
     # Create the Queen Bee (manager)
-    queen = QueenBee(model_name="llama3.2:3b")
+    queen = QueenBee(
+        model_name=config["model"]["queen_model"],
+        temperature=config["model"].get("temperature", 0.5),
+        ai_backend=ai,
+    )
     queen.start()
 
     time.sleep(0.5)
@@ -86,7 +100,9 @@ def run_demo():
     for i in range(1, 4):
         worker = WorkerBee(
             worker_id=f"bee-{i:03d}",
-            model_name="llama3.2:3b"
+            model_name=config["model"]["worker_model"],
+            temperature=config["model"].get("temperature", 0.7),
+            ai_backend=ai,
         )
         worker.start()
         queen.add_worker(worker)
