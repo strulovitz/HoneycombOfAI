@@ -6,6 +6,7 @@ No separate server needed — the model runs inside this process.
 This is the convenient-but-slower option (compared to llama-server).
 """
 
+import threading
 from ai_backend import AIBackend
 
 
@@ -29,6 +30,7 @@ class LlamaCppPythonBackend(AIBackend):
         self.n_gpu_layers = n_gpu_layers
         self.n_ctx = n_ctx
         self._llm = None  # Lazy-loaded
+        self._lock = threading.Lock()  # Thread safety — only one request at a time
 
     def _load_model(self):
         """Load the model on first use (lazy loading)."""
@@ -55,11 +57,12 @@ class LlamaCppPythonBackend(AIBackend):
         The 'model' parameter is ignored — we always use the loaded GGUF file.
         """
         try:
-            self._load_model()
-            response = self._llm.create_chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-            )
+            with self._lock:
+                self._load_model()
+                response = self._llm.create_chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature,
+                )
             return response["choices"][0]["message"]["content"].strip()
         except ImportError as e:
             return f"[ERROR] {str(e)}"
