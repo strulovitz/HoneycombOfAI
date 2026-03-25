@@ -2,20 +2,17 @@
 # ============================
 # Beehive Of AI — Personal Computers Working Together as One Powerful AI
 #
-# DESKTOP (Living Room) — Queen Bee mode
-#   mode: queen
-#   server.url: http://localhost:5000
-#
-# LAPTOP (Bedroom) — Worker Bee mode
-#   mode: worker
-#   server.url: https://beehiveofai.com
+# LINUX CROSS-MACHINE TEST (2026-03-25)
+#   Desktop Linux Mint = Worker Bee (RTX 4070 Ti, Ollama)
+#   Laptop Debian 13   = Queen Bee  (RTX 5090, Ollama)
+#   Website runs on Desktop at http://10.0.0.4:5000
 
 # Which mode to run: worker, queen, or beekeeper
 mode: worker
 
-# Connection to the BeehiveOfAI website
+# Connection to the BeehiveOfAI website (running locally on this Desktop)
 server:
-  url: "https://beehiveofai.com"
+  url: "http://10.0.0.4:5000"
 
 # AI Model settings
 model:
@@ -38,7 +35,7 @@ model:
 
 # Worker Bee settings (used when mode: worker)
 worker:
-  worker_id: "worker-laptop-001"
+  worker_id: "worker-desktop-mint-001"
   hive_id: 1
   poll_interval: 5
   email: "worker1@test.com"
