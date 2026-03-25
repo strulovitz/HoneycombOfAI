@@ -2,17 +2,15 @@
 # ============================
 # Beehive Of AI — Personal Computers Working Together as One Powerful AI
 #
-# LINUX CROSS-MACHINE TEST (2026-03-25)
-#   Desktop Linux Mint = Worker Bee (RTX 4070 Ti, Ollama)
-#   Laptop Debian 13   = Queen Bee  (RTX 5090, Ollama)
-#   Website runs on Desktop at http://10.0.0.4:5000
+# GUI: python gui_main.py
+# CLI: python honeycomb.py
 
 # Which mode to run: worker, queen, or beekeeper
-mode: worker
+mode: beekeeper
 
-# Connection to the BeehiveOfAI website (running locally on this Desktop)
+# Connection to the BeehiveOfAI website
 server:
-  url: "http://10.0.0.4:5000"
+  url: "http://localhost:5000"
 
 # AI Model settings
 model:
@@ -46,8 +44,11 @@ queen:
   min_workers: 2
   max_workers: 10
 
-# Beekeeper settings
+# Beekeeper settings (used when mode: beekeeper)
 beekeeper:
+  email: "company1@test.com"
+  password: "test123"
+  hive_id: 1
   max_budget_per_job: 1.00
 
 # Authentication for website connection (used by Queen Bee mode)
