@@ -5,3 +5,7 @@ ollama==0.4.8
 PyQt6==6.9.0
 # Optional: only needed if using backend: llamacpp-python
 # pip install llama-cpp-python
+#
+# LINUX USERS: PyQt6 requires a system package not installed by default:
+#   sudo apt install -y libxcb-cursor0
+# Without this, the GUI (gui_main.py) will crash on startup.

@@ -116,6 +116,18 @@ The RTX 5090 (Blackwell) on Debian and any NVIDIA GPU on Linux Mint have bleedin
 
 ---
 
+## IMPORTANT: Linux GUI Dependency
+
+The PyQt6 GUI requires a system package on Linux that is NOT installed by default:
+
+```bash
+sudo apt install -y libxcb-cursor0
+```
+
+Without this, `python gui_main.py` will crash with: `qt.qpa.plugin: Could not load the Qt platform plugin "xcb"`. This applies to all Debian-based distros (Debian, Ubuntu, Linux Mint, etc.). Discovered and confirmed on Desktop Linux Mint 22.2 (2026-03-25).
+
+---
+
 ## Next Steps
 
 1. **Desktop Linux Mint Setup** — Set up the Desktop's Linux Mint 22.2 with Claude Code, the project, and all backends (see `DESKTOP_LINUX_MINT_SETUP.md`)

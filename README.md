@@ -67,17 +67,22 @@ This runs a complete simulated workflow: Beekeeper → Queen Bee → 3 Worker Be
 
 > Coming soon — full installation instructions will be published in Phase 2.
 
-**Requirements (planned):**
+**Requirements:**
 - Python 3.10+
 - [Ollama](https://ollama.ai) (or another supported AI backend)
 - At least one model installed: `ollama pull llama3.2:3b`
+- **Linux only:** `libxcb-cursor0` system package (required for the PyQt6 GUI)
 
 ```bash
+# Linux: install system dependency for the GUI
+sudo apt install -y libxcb-cursor0
+
 git clone https://github.com/strulovitz/HoneycombOfAI.git
 cd HoneycombOfAI
 pip install -r requirements.txt
 # Edit config.yaml to set your mode and model
-python honeycomb.py
+python honeycomb.py        # CLI mode
+python gui_main.py         # GUI mode
 ```
 
 ---

@@ -18,6 +18,7 @@ HoneycombOfAI now has a full native desktop GUI built with **PyQt6**. All three 
 python gui_main.py
 
 # Linux (Debian 13 or Linux Mint 22.2)
+sudo apt install -y libxcb-cursor0   # required system package for PyQt6 GUI
 source ~/honeycomb-venv/bin/activate
 pip install PyQt6
 cd ~/HoneycombOfAI
@@ -130,3 +131,4 @@ For each test, the other two roles ran in separate terminal windows using `pytho
 2. Config.yaml credentials are plaintext — `.gitignore` should exclude it in production
 3. The `honeycomb_gui.log` file grows over time — consider rotation for long-running instances
 4. GUI requires a display — won't work on headless servers (use CLI for those)
+5. **Linux GUI requires `libxcb-cursor0`** — without it, PyQt6 crashes on startup. Install with `sudo apt install -y libxcb-cursor0`. Tested/confirmed on Linux Mint 22.2 (2026-03-25).

@@ -80,6 +80,9 @@ cd ~/HoneycombOfAI
 ### Phase 4: Set Up Python Virtual Environment
 
 ```bash
+# Install system dependency required for PyQt6 GUI
+sudo apt install -y libxcb-cursor0
+
 python3 -m venv ~/honeycomb-venv
 source ~/honeycomb-venv/bin/activate
 cd ~/HoneycombOfAI

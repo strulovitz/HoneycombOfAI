@@ -152,6 +152,26 @@ The model downloads automatically on first run from HuggingFace.
 
 ---
 
+## PyQt6 GUI on Linux — Required System Package
+
+The GUI (`gui_main.py`) uses PyQt6, which requires the `libxcb-cursor0` system package on Linux. Without it, the GUI will crash on startup with:
+
+```
+qt.qpa.plugin: From 6.5.0, xcb-cursor0 or libxcb-cursor0 is needed to load the Qt xcb platform plugin.
+This application failed to start because no Qt platform plugin could be initialized.
+```
+
+**Fix (run once):**
+```bash
+sudo apt install -y libxcb-cursor0
+```
+
+This applies to all Debian-based distributions: Debian, Ubuntu, Linux Mint, Pop!_OS, etc. The package is not installed by default on most Linux distributions.
+
+After installing, the GUI launches normally with `python gui_main.py`.
+
+---
+
 ## GPU/CUDA Warning for Linux
 
 If your Linux machine has an NVIDIA GPU with CUDA drivers already working:
