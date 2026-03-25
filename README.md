@@ -45,7 +45,7 @@ Works with any of the popular local AI runners:
 | Backend | Notes |
 |---------|-------|
 | **Ollama** | Recommended — easiest setup |
-| **LM Studio** | Great GUI for beginners. **Linux users:** you must manually start the local server in LM Studio's Developer tab (Windows does this automatically) |
+| **LM Studio** | Great GUI for beginners. You must manually start the local server in LM Studio's Developer tab before HoneycombOfAI can detect it |
 | **llama.cpp** | Lowest resource usage |
 | **vLLM** | Best for high-throughput servers |
 

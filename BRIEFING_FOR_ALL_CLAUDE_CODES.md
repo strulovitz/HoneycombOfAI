@@ -15,46 +15,31 @@ This briefing is for:
 
 ---
 
-## Critical Finding: LM Studio Behaves Differently on Linux vs Windows
+## Correction: LM Studio Requires Manual Server Start on ALL Platforms
 
-### What We Discovered
+### What Happened
 
-On 2026-03-24, while testing HoneycombOfAI on Debian 13 (Laptop), the backend detector could not find LM Studio even though it was running with a model loaded. After investigation, the root cause was identified:
+On 2026-03-24, we incorrectly documented that LM Studio auto-starts its API server on Windows but not on Linux. **This was wrong.** LM Studio requires you to manually start the server on **all platforms** — Windows, Linux, and macOS. The original report was based on a mistaken recollection.
 
-**LM Studio on Windows:** Automatically starts its local API server on port 1234 when you load a model. HoneycombOfAI detects it with zero user action.
+### The Correct Information
 
-**LM Studio on Linux:** Does NOT auto-start the server. The user must manually go to the Developer tab (or Local Server tab) in LM Studio and click "Start Server." Only then does port 1234 become active and HoneycombOfAI can detect it.
+**LM Studio on ALL platforms:** Does NOT auto-start the API server. The user must go to the Developer tab (or Local Server tab) and click "Start Server" before port 1234 becomes active and HoneycombOfAI can detect it. This is the same on Windows, Linux, and macOS.
 
 ### What This Means for You
 
 1. **The HoneycombOfAI code is correct and platform-agnostic.** The detection logic in `backend_detector.py` works the same everywhere — it tries `http://localhost:1234/v1/models` with a 2-second timeout. No code changes are needed.
 
-2. **This is a documentation/user-guidance issue, not a code issue.** When helping users set up LM Studio on Linux, always tell them to manually start the server.
+2. **When helping users set up LM Studio on ANY platform**, always tell them to manually start the server in the Developer tab.
 
-3. **Do NOT modify the detection code** to try to "fix" this. The code is correct. The behavior difference is in LM Studio itself.
-
-### Where This Is Now Documented
-
-- **The Book (TheDistributedAIRevolution):** Chapter 7, in the "LM Studio — the visual alternative" section. A note for Linux users has been added.
-- **HoneycombOfAI README.md:** The Supported AI Backends table now includes a note for Linux users.
-- **HoneycombOfAI PLATFORM_NOTES.md:** New file with detailed troubleshooting steps for all backends on all platforms.
-- **BeehiveOfAI PROJECT_STATUS.md:** Added under "Known Platform Findings."
-- **Laptop Debian Claude Code memory:** Saved as a project memory for future conversations.
+3. **Do NOT modify the detection code.** The code is correct. The manual server start is expected LM Studio behavior on all platforms.
 
 ### Action Items for Each Claude Code Instance
 
-**Desktop Windows Claude Code:**
-- Be aware of this difference if a user asks about LM Studio not being detected
-- If you're writing documentation or helping users, include the Linux server start instruction
-- When the GUI is eventually built, consider adding a tooltip or help text about this
-
-**Laptop Windows Claude Code:**
-- You don't need to do anything — LM Studio works automatically on Windows
-- But be aware that users on Linux will have this issue, in case you're writing docs or helping someone
-
-**Any Claude Code instance writing user documentation or the book:**
-- Always mention the Linux manual server start when discussing LM Studio setup
-- The exact steps: Open LM Studio > Developer tab > Start Server > Verify port 1234
+**All instances:**
+- When writing docs or helping users with LM Studio, always mention the manual server start requirement
+- This applies equally to Windows, Linux, and macOS — there is NO platform difference
+- The exact steps: Open LM Studio > Load a model > Developer tab > Start Server > Verify port 1234
+- If you previously documented a Windows/Linux difference for LM Studio, correct it
 
 ---
 
@@ -77,7 +62,7 @@ When making findings or decisions that affect the project, update ALL relevant r
 | Backend | Windows | Debian | Status |
 |---------|---------|--------|--------|
 | Ollama | PASS | PASS | Done |
-| LM Studio | PASS | PASS | Done (Linux needs manual server start) |
+| LM Studio | PASS | PASS | Done (all platforms need manual server start) |
 | llama.cpp server | PASS | Not tested | Done (Windows) |
 | llama.cpp Python | PASS (CPU) | Not tested | Done (Windows) |
 | vLLM | N/A | **NOT DONE** | **Next task** |

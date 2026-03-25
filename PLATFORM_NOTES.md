@@ -5,22 +5,17 @@
 
 ---
 
-## LM Studio on Linux: Manual Server Start Required
+## LM Studio: Manual Server Start Required (All Platforms)
 
 ### The Issue
 
-When running HoneycombOfAI on Linux (e.g., Debian, Ubuntu), the backend detector may show LM Studio as **"not detected"** even though LM Studio is installed, running, and has a model loaded.
+The backend detector may show LM Studio as **"not detected"** even though LM Studio is installed, running, and has a model loaded.
 
 ### Why This Happens
 
-LM Studio behaves differently on Windows and Linux:
+LM Studio does **not** automatically start its local API server when you load a model. This is the same on **all platforms** (Windows, Linux, macOS). You must manually enable the server before HoneycombOfAI can detect it.
 
-| Platform | Behavior |
-|----------|----------|
-| **Windows** | LM Studio **automatically** starts its local API server on port 1234 as soon as you load a model. No extra steps needed. HoneycombOfAI detects it instantly. |
-| **Linux** | LM Studio does **NOT** auto-start the server. You must manually enable it. |
-
-This is a LM Studio behavior difference — **not** a HoneycombOfAI bug. The detection code in `backend_detector.py` is identical and correct on all platforms. It simply tries to reach `http://localhost:1234/v1/models`, and on Linux, nothing is listening on that port until you start the server yourself.
+The detection code in `backend_detector.py` tries to reach `http://localhost:1234/v1/models`. Nothing is listening on that port until you start the server yourself in LM Studio.
 
 ### How to Fix It
 
@@ -41,9 +36,9 @@ curl http://localhost:1234/v1/models
 
 You should see a JSON response listing your loaded model(s). If you get "Connection refused," the server is not running yet.
 
-### Permanent Tip
+### Tip
 
-Every time you restart LM Studio on Linux, you will need to start the server again. It does not remember this setting between sessions (as of the current LM Studio version). On Windows, this is not necessary — it just works.
+Every time you restart LM Studio, you will need to start the server again. It does not remember this setting between sessions (as of the current LM Studio version). This applies to all platforms.
 
 ---
 
