@@ -5,6 +5,18 @@
 
 ---
 
+## Backend Support Matrix
+
+| Backend | Windows | Linux (Debian/Ubuntu/Mint) | macOS | Config Key |
+|---------|---------|---------------------------|-------|------------|
+| **Ollama** | Yes | Yes | Yes | `ollama` |
+| **LM Studio** | Yes (manual server start) | Yes (manual server start) | Yes (manual server start) | `lmstudio` |
+| **llama.cpp server** | Yes | Yes (build from source with CUDA) | Yes | `llamacpp-server` |
+| **llama.cpp Python** | Yes (CPU) | Yes (CPU or GPU) | Yes (CPU) | `llamacpp-python` |
+| **vLLM** | No | Yes (requires CUDA GPU) | No | `vllm` |
+
+---
+
 ## LM Studio: Manual Server Start Required (All Platforms)
 
 ### The Issue
@@ -42,27 +54,112 @@ Every time you restart LM Studio, you will need to start the server again. It do
 
 ---
 
-## Other Backends
-
-### Ollama
+## Ollama
 - Works identically on Windows, Linux, and macOS
 - Automatically serves on port 11434 when the Ollama service is running
 - No platform-specific issues known
+- Install: https://ollama.ai
 
-### llama.cpp Server
-- Works identically on all platforms
+---
+
+## llama.cpp Server
+
+- Works identically on all platforms once built
 - You must manually start the server on all platforms (this is expected — it's a command-line server)
 - Default port: 8080
 
-### vLLM
+### Building from Source on Linux with CUDA (GPU acceleration)
+
+```bash
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release -j$(nproc)
+```
+
+The binary will be at `build/bin/llama-server`.
+
+### Starting the Server
+
+```bash
+./build/bin/llama-server \
+  --model /path/to/model.gguf \
+  --port 8080 \
+  --n-gpu-layers 99 \
+  --ctx-size 4096
+```
+
+### Getting a GGUF Model
+
+Download from HuggingFace (example — Qwen 3B, no approval needed):
+```bash
+huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF \
+  qwen2.5-3b-instruct-q4_k_m.gguf --local-dir ~/models
+```
+
+---
+
+## llama.cpp Python (llama-cpp-python)
+
+- Works on all platforms
+- No server needed — runs in-process
+- Requires a GGUF model file (set `model_path` in config.yaml)
+- Thread-safe with a lock — parallel workers are serialized (one at a time)
+
+### Installing with GPU Acceleration on Linux
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python
+```
+
+### Installing on Windows (CPU-only)
+
+```bash
+pip install llama-cpp-python
+```
+
+Note: GPU-accelerated builds on Windows require Visual Studio and CUDA toolkit. CPU-only is much slower (~75s vs ~23s for the demo task) but works out of the box.
+
+---
+
+## vLLM
+
 - **Linux only** — vLLM does not support Windows or macOS
 - Requires CUDA-compatible GPU
 - Default port: 8000
+- Uses HuggingFace models (not GGUF)
+- Pre-allocates most of GPU VRAM for KV cache
 
-### llama.cpp Python (llama-cpp-python)
-- Works on all platforms
-- No server needed — runs in-process
-- On Linux with NVIDIA GPU, install with CUDA support for GPU acceleration:
-  ```bash
-  CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python
-  ```
+### Installing
+
+```bash
+pip install vllm
+```
+
+### Starting the Server
+
+```bash
+python -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen2.5-3B-Instruct --port 8000
+```
+
+The model downloads automatically on first run from HuggingFace.
+
+### Model Recommendations
+
+- **Qwen/Qwen2.5-3B-Instruct** — Fully open, no approval needed, ~6GB download
+- Models requiring HuggingFace approval (e.g., Meta Llama) may take days to get access
+
+---
+
+## GPU/CUDA Warning for Linux
+
+If your Linux machine has an NVIDIA GPU with CUDA drivers already working:
+
+1. **NEVER** run `sudo apt upgrade` without checking what it wants to update
+2. **NEVER** update NVIDIA drivers or CUDA unless absolutely necessary
+3. Before any `apt install`, run with `--dry-run` first
+4. Always use Python venvs to isolate packages
+5. Run `nvidia-smi` after every installation to verify GPU is still working
+
+This is especially critical for newer GPUs (RTX 4090, RTX 5090) where Linux driver support is still maturing.
