@@ -6,7 +6,7 @@
 # CLI: python honeycomb.py
 
 # Which mode to run: worker, queen, or beekeeper
-mode: worker
+mode: queen
 
 # Connection to the BeehiveOfAI website
 server:
@@ -33,7 +33,7 @@ model:
 
 # Worker Bee settings (used when mode: worker)
 worker:
-  worker_id: "worker-laptop-macos-009"
+  worker_id: "worker-desktop-macos-007"
   hive_id: 1
   poll_interval: 5
   email: "worker1@test.com"
