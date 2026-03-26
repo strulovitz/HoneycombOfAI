@@ -30,8 +30,8 @@ The entire book (TheDistributedAIRevolution) was deleted and rewritten from scra
 | 3 | The Secret Ingredient: AI That Lives on Your Computer | DONE |
 | 4 | One App, Three Dreams | DONE |
 | 5 | The Marketplace: Where Tasks Meet Computers | DONE |
-| 6 | Show Me the Honey: How Everyone Earns | TODO |
-| 7 | From Zero to Beehive: Anyone Can Set This Up | TODO |
+| 6 | Show Me the Honey: How Everyone Earns | DONE |
+| 7 | From Zero to Beehive: Anyone Can Set This Up | DONE |
 | 8 | The Proof: We Actually Did It | TODO |
 | 9 | Vibe Coding: How One Person Built All of This | TODO |
 | 10 | The Future: A World of Beehives | TODO |
@@ -57,4 +57,4 @@ The entire book (TheDistributedAIRevolution) was deleted and rewritten from scra
 
 ## Remaining Work
 
-Chapters 6-10 and the Epilogue will be written in the next session (2026-03-26).
+Chapters 6-7 written on 2026-03-26. Chapters 8-10 and the Epilogue to follow.
