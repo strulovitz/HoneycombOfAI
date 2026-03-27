@@ -204,7 +204,8 @@ class QueenThread(QThread):
 
                     # Wait for all subtasks to complete
                     self.status_changed.emit("waiting")
-                    completed_subtasks = self._wait_for_subtasks(job_id, subtask_ids)
+                    timeout = getattr(self.queen_bee, 'subtask_timeout', 300)
+                    completed_subtasks = self._wait_for_subtasks(job_id, subtask_ids, timeout=timeout)
 
                     if completed_subtasks is None:
                         self.log_message.emit(f"Job #{job_id}: timed out waiting for workers")

@@ -128,10 +128,12 @@ def main():
         worker.run_from_website(api, hive_id, poll_interval)
 
     elif mode == "queen":
+        queen_cfg = config.get("queen", {})
         queen = QueenBee(
             model_name=config["model"]["queen_model"],
             temperature=config["model"]["temperature"],
             ai_backend=ai,
+            subtask_timeout=queen_cfg.get("subtask_timeout", 300),
         )
         # Add default worker bees
         num_workers = config["queen"].get("min_workers", 2)

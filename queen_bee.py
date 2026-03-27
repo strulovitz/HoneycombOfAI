@@ -34,9 +34,10 @@ class QueenBee:
 
     def __init__(self, model_name: str = "llama3.2:3b",
                  ollama_url: str = "http://localhost:11434", temperature: float = 0.5,
-                 ai_backend: AIBackend = None):
+                 ai_backend: AIBackend = None, subtask_timeout: int = 300):
         self.model_name = model_name
         self.temperature = temperature
+        self.subtask_timeout = subtask_timeout
         self.workers: list[WorkerBee] = []
 
         if ai_backend is not None:
@@ -278,7 +279,7 @@ Your combined final answer:"""
     def process_from_website(self, api: 'BeehiveAPIClient', hive_id: int, poll_interval: int = 10):
         """Poll the website for new jobs and coordinate distributed workers to process them."""
         console.print(f"\n[bold yellow]👑 Queen Bee connected to website — polling Hive #{hive_id}[/bold yellow]")
-        console.print(f"[dim]Checking for new jobs every {poll_interval} seconds. Press Ctrl+C to stop.[/dim]\n")
+        console.print(f"[dim]Checking for new jobs every {poll_interval} seconds. Subtask timeout: {self.subtask_timeout}s. Press Ctrl+C to stop.[/dim]\n")
 
         while True:
             try:
@@ -310,7 +311,7 @@ Your combined final answer:"""
                         api.update_job_status(job_id, 'processing')
 
                         # Step 4: Wait for distributed workers to complete the subtasks
-                        results = self.wait_for_subtasks(api, job_id, subtask_ids)
+                        results = self.wait_for_subtasks(api, job_id, subtask_ids, timeout=self.subtask_timeout)
 
                         # Step 5: Combine results into Honey
                         api.update_job_status(job_id, 'combining')

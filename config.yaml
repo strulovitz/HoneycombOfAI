@@ -10,7 +10,7 @@ mode: worker
 
 # Connection to the BeehiveOfAI website
 server:
-  url: "https://beehiveofai.com"
+  url: "http://10.0.0.4:5000"
 
 # AI Model settings
 model:
@@ -43,6 +43,9 @@ worker:
 queen:
   min_workers: 2
   max_workers: 10
+  # How long (seconds) the Queen waits for workers to complete subtasks.
+  # Default: 300 (5 minutes). Increase for slow CPU-only machines (e.g., macOS VMs).
+  subtask_timeout: 900
 
 # Beekeeper settings (used when mode: beekeeper)
 beekeeper:
