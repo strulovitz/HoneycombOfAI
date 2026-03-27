@@ -107,6 +107,25 @@ Edit `config.yaml` to set your mode, AI backend, and model. Full documentation c
 
 ---
 
+## Troubleshooting
+
+### Workers/Queens on other machines can't connect (Windows host)
+
+**Symptom:** The website runs fine on the Windows machine (browser works, localhost works), but Workers or Queens on other computers get "Cannot connect" errors.
+
+**Cause:** Windows Defender Firewall silently blocks incoming connections to Python. Even with Flask bound to `0.0.0.0`, Windows drops cross-machine HTTP connections with no warning.
+
+**Fix:** Open PowerShell **as Administrator** and run:
+```powershell
+New-NetFirewallRule -DisplayName "BeehiveOfAI Python" -Direction Inbound -Action Allow -Program "C:\full\path\to\your\python.exe" -Protocol TCP -Profile Any
+```
+
+Find your Python path with: `python -c "import sys; print(sys.executable)"`
+
+Each Python installation (miniconda, virtualenv, system Python) needs its own rule. No restart required. See [PLATFORM_NOTES.md](PLATFORM_NOTES.md) for full details.
+
+---
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.

@@ -172,6 +172,28 @@ After installing, the GUI launches normally with `python gui_main.py`.
 
 ---
 
+## Windows Firewall Silently Blocks Worker/Queen Connections
+
+**Symptom:** HoneycombOfAI (Worker Bee or Queen Bee) shows "Cannot connect to BeehiveOfAI" — but the website works fine in a browser on the same Windows machine. Ping also works.
+
+**Cause:** Windows Defender Firewall blocks incoming TCP connections **per executable**. Even though Flask binds to `0.0.0.0:5000`, Windows silently drops incoming connections from other machines unless the specific Python executable is explicitly allowed. There is no popup, no warning, no log entry.
+
+**Fix:** Open PowerShell **as Administrator** and run:
+```powershell
+New-NetFirewallRule -DisplayName "BeehiveOfAI Python" -Direction Inbound -Action Allow -Program "C:\full\path\to\your\python.exe" -Protocol TCP -Profile Any
+```
+
+To find your Python path, run:
+```bash
+python -c "import sys; print(sys.executable)"
+```
+
+**Important:** Each Python installation (miniconda, virtualenv, system Python) is a different executable and needs its own rule. No restart required — the rule takes effect immediately.
+
+This only affects **Windows hosts**. Linux and macOS do not have this problem.
+
+---
+
 ## GPU/CUDA Warning for Linux
 
 If your Linux machine has an NVIDIA GPU with CUDA drivers already working:
