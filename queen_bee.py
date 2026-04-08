@@ -68,6 +68,57 @@ class QueenBee:
         self.workers.append(worker)
         console.print(f"  🐝 Worker [{worker.worker_id}] joined the Hive (total: {len(self.workers)})")
 
+    # =====================================================================
+    # FUTURE FEATURE: Byzantine Generals Worker Trust Verification
+    # =====================================================================
+    # The Queen sends the SAME small test task to 3 workers and compares
+    # results. If one worker disagrees with the other two, the naive
+    # approach (majority vote) would kick the outlier out.
+    #
+    # But disagreement has multiple possible CAUSES:
+    #   Cause A: Worker is broken or malicious → exclude it
+    #   Cause B: Worker has a newer/better model → it might be the BEST one
+    #   Cause C: Worker interpreted the question differently → not broken
+    #
+    # A smart system should determine WHY the worker disagrees, not just
+    # THAT it disagrees. This is a causal inference problem — understanding
+    # the cause behind the observed effect (disagreement).
+    #
+    # See Chapter 5 of "The Distributed AI Revolution" book for full
+    # discussion of this problem and the Byzantine Generals analogy.
+    #
+    # def verify_worker_trust(self, worker: WorkerBee, test_task: str,
+    #                         reference_workers: list[WorkerBee]) -> dict:
+    #     """
+    #     Verify a worker's trustworthiness using Byzantine fault detection.
+    #
+    #     Sends the same test_task to the target worker and reference_workers,
+    #     compares results, and attempts to determine the CAUSE of any
+    #     disagreement rather than simply punishing the outlier.
+    #
+    #     Returns:
+    #         dict with 'trusted' (bool), 'cause' (str), 'confidence' (float)
+    #     """
+    #     # Step 1: Send same task to all workers
+    #     all_workers = [worker] + reference_workers
+    #     results = {}
+    #     for w in all_workers:
+    #         results[w.worker_id] = w.process_subtask(test_task)
+    #
+    #     # Step 2: Compare results — does the target worker agree with majority?
+    #     # TODO: Implement semantic similarity, not just string matching
+    #
+    #     # Step 3: If disagreement detected, determine CAUSE:
+    #     # - Check if disagreement is factual (different claims about reality)
+    #     # - Check if disagreement is stylistic (same meaning, different words)
+    #     # - Check if outlier has MORE detail (possible newer/better model)
+    #     # - Check if outlier response is nonsensical (broken/malicious)
+    #     # TODO: This is where causal inference methods could be applied
+    #
+    #     # Step 4: Return trust assessment with cause explanation
+    #     pass
+    # =====================================================================
+
     def split_task(self, nectar: str, num_subtasks: int = None) -> list[str]:
         """
         Split a big task (Nectar) into small independent sub-tasks.
