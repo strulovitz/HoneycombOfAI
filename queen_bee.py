@@ -142,23 +142,21 @@ class QueenBee:
             border_style="cyan"
         ))
 
-        prompt = f"""Split this task into exactly {num_subtasks} parts. Each part is one plain text sentence describing what to research or answer. No nested objects, no pros/cons — just {num_subtasks} simple sentences.
+        prompt = f"""Split this task into exactly {num_subtasks} parts.
 
-Task: {nectar}
+Task: {nectar}"""
 
-Example format: ["Research aspect A", "Analyze aspect B", "Compare C and D"]
-
-Return ONLY a JSON array of exactly {num_subtasks} strings:"""
-
-        subtasks = self.ai.ask_for_json_list(
+        raw = self.ai.ask(
             prompt=prompt,
             model=self.model_name,
-            temperature=0.3  # Low temperature for structured output
+            temperature=0.3
         )
+
+        from smart_splitter import smart_split
+        subtasks = smart_split(raw)
 
         # Ensure we have the right number of subtasks
         if len(subtasks) < num_subtasks:
-            # If AI returned fewer, pad with generic tasks
             for i in range(len(subtasks), num_subtasks):
                 subtasks.append(f"Provide additional details about: {nectar} (aspect {i+1})")
         elif len(subtasks) > num_subtasks:
