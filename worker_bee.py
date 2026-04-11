@@ -69,12 +69,7 @@ class WorkerBee:
         Returns:
             The AI model's response as a string
         """
-        prompt = f"""Please complete the following task thoroughly and concisely.
-Give a clear, well-organized answer.
-
-Task: {subtask_text}
-
-Your answer:"""
+        prompt = f"""{subtask_text}"""
 
         console.print(f"  🐝 [{self.worker_id}] Processing: [italic]{subtask_text[:80]}{'...' if len(subtask_text) > 80 else ''}[/]")
 

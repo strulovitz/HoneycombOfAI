@@ -142,20 +142,13 @@ class QueenBee:
             border_style="cyan"
         ))
 
-        prompt = f"""You are a task manager. Your job is to split one big task into exactly {num_subtasks} smaller independent sub-tasks.
+        prompt = f"""Split this task into exactly {num_subtasks} independent sub-tasks.
+Each sub-task covers a different part. Together they fully cover the original task.
 
-IMPORTANT RULES:
-- Each sub-task must be INDEPENDENT — it can be completed without knowing the results of other sub-tasks
-- Each sub-task should cover a DIFFERENT aspect or part of the main task
-- Each sub-task should be SPECIFIC and CLEAR
-- Together, all sub-tasks should fully cover the original task
+Task: {nectar}
 
-The main task is: {nectar}
-
-Return ONLY a JSON array of {num_subtasks} strings, each being one sub-task. Example format:
-["first sub-task description", "second sub-task description", "third sub-task description"]
-
-Your JSON array:"""
+Return ONLY a JSON array of {num_subtasks} strings.
+Example: ["sub-task 1", "sub-task 2", "sub-task 3"]"""
 
         subtasks = self.ai.ask_for_json_list(
             prompt=prompt,
@@ -260,20 +253,14 @@ Your JSON array:"""
             formatted += f"Sub-task: {r['subtask']}\n"
             formatted += f"Answer: {r['result']}\n"
 
-        prompt = f"""You are a manager combining results from multiple workers into one final comprehensive answer.
+        prompt = f"""Combine these results into one answer.
 
-The original question was: {nectar}
+Original question: {nectar}
 
-Here are the results from each worker:
+Results:
 {formatted}
 
-Please combine all these results into ONE well-organized, coherent final answer.
-- Do NOT repeat information that appears in multiple results
-- Organize the information logically with clear sections
-- Make it read as one unified document, not as separate pieces
-- Keep all important details from every worker's contribution
-
-Your combined final answer:"""
+Combine into one coherent answer. Remove redundancy, keep all important details."""
 
         honey = self.ai.ask(
             prompt=prompt,
