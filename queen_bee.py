@@ -142,13 +142,13 @@ class QueenBee:
             border_style="cyan"
         ))
 
-        prompt = f"""Split this task into exactly {num_subtasks} independent sub-tasks.
-Each sub-task covers a different part. Together they fully cover the original task.
+        prompt = f"""Split this task into exactly {num_subtasks} parts. Each part is one plain text sentence describing what to research or answer. No nested objects, no pros/cons — just {num_subtasks} simple sentences.
 
 Task: {nectar}
 
-Return ONLY a JSON array of {num_subtasks} strings.
-Example: ["sub-task 1", "sub-task 2", "sub-task 3"]"""
+Example format: ["Research aspect A", "Analyze aspect B", "Compare C and D"]
+
+Return ONLY a JSON array of exactly {num_subtasks} strings:"""
 
         subtasks = self.ai.ask_for_json_list(
             prompt=prompt,
