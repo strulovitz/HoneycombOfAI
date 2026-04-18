@@ -267,11 +267,14 @@ def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
     Subtask text formats (emitted by the multimedia Queen):
       MULTIMEDIA_TILE:photo:<label>:<url>|crop=x1,y1,x2,y2
       MULTIMEDIA_TILE:sound:<label>:<url>|start=<s>|duration=<s>
-      MULTIMEDIA_TILE:video-frame:<label>:<url>|timestamp=<s>
+      MULTIMEDIA_TILE:video-clip:<label>:<url>|start=<s>|duration=<s>|fps=<f>
       MULTIMEDIA_TILE:video-audio:<label>:<url>|start=<s>|duration=<s>
 
     The Worker fetches the FULL source file from <url>, extracts the specified
-    slice locally, and runs ONE model pass on it. Returns the tile's text.
+    slice or clip locally, and runs ONE model pass on it. For video-clip tiles,
+    "ONE model pass" means a single multi-frame qwen3-vl call on the frames
+    sampled from inside the clip, so the Worker perceives MOTION rather than a
+    still photograph. Returns the tile's text.
     """
     if not subtask_text.startswith("MULTIMEDIA_TILE:"):
         raise ValueError(f"Not a tile subtask: {subtask_text[:80]}")
@@ -286,8 +289,9 @@ def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
     params = _parse_params(url_and_params[1] if len(url_and_params) > 1 else "")
 
     path = urlparse(url).path
-    ext = Path(path).suffix or {"photo": ".jpg", "sound": ".mp3",
-                                 "video-frame": ".mp4", "video-audio": ".mp4"}.get(media_type, ".bin")
+    ext_map = {"photo": ".jpg", "sound": ".mp3",
+               "video-clip": ".mp4", "video-audio": ".mp4"}
+    ext = Path(path).suffix or ext_map.get(media_type, ".bin")
 
     with tempfile.TemporaryDirectory() as td:
         tdp = Path(td)
@@ -317,18 +321,41 @@ def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
                 "-ac", "1", "-ar", "16000", str(slice_wav)
             ], capture_output=True, check=True)
             desc = _run_whisper(slice_wav)
-        elif media_type == "video-frame":
-            timestamp = float(params.get("timestamp", "0"))
-            frame_jpg = tdp / "frame.jpg"
+        elif media_type == "video-clip":
+            # Motion-perceiving Worker: extract a short clip, sample several
+            # frames from inside it, pass the frame sequence to a video-capable
+            # vision model in ONE call. Worker sees motion, not stills.
+            start = float(params.get("start", "0"))
+            duration = float(params.get("duration", "3"))
+            fps = float(params.get("fps", "2"))
+            frame_dir = tdp / "frames"
+            frame_dir.mkdir()
             subprocess.run([
-                "ffmpeg", "-y", "-ss", str(timestamp), "-i", str(src),
-                "-frames:v", "1", str(frame_jpg)
+                "ffmpeg", "-y", "-ss", str(start), "-i", str(src),
+                "-t", str(duration), "-vf", f"fps={fps}",
+                str(frame_dir / "frame_%03d.jpg"),
             ], capture_output=True, check=True)
-            img = Image.open(frame_jpg).convert("RGB")
-            desc = _run_ollama_vision(
-                ollama_client, img,
-                "Describe this video frame in one sentence.",
-            )
+            frame_paths = sorted(frame_dir.glob("frame_*.jpg"))
+            if not frame_paths:
+                desc = "(no frames extracted from clip)"
+            else:
+                frame_bytes = [fp.read_bytes() for fp in frame_paths]
+                # /no_think so qwen3-vl returns the actual description,
+                # not internal thinking tokens. Fall back to .thinking if empty.
+                resp = ollama_client.generate(
+                    model="qwen3-vl:8b",
+                    prompt=(
+                        f"/no_think These are {len(frame_bytes)} frames from a "
+                        f"{duration:.1f}-second video clip in time order. Describe the "
+                        "motion and actions across the frames in one or two sentences "
+                        "— what moves, in what direction, who does what."
+                    ),
+                    images=frame_bytes,
+                    options={"temperature": 0.1, "num_predict": 300, "num_ctx": 16384},
+                )
+                desc = (resp.response or "").strip()
+                if not desc:
+                    desc = (getattr(resp, "thinking", "") or "").strip() or "(empty)"
         elif media_type == "video-audio":
             start = float(params.get("start", "0"))
             duration = float(params.get("duration", "1"))
