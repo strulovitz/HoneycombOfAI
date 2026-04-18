@@ -18,6 +18,14 @@ if TYPE_CHECKING:
 console = Console()
 
 
+def _is_multimedia(subtask_text: str) -> bool:
+    return subtask_text.startswith("MULTIMEDIA:")
+
+
+def _is_multimedia_tile(subtask_text: str) -> bool:
+    return subtask_text.startswith("MULTIMEDIA_TILE:")
+
+
 class WorkerBee:
     """
     A Worker Bee in the Beehive Of AI network.
@@ -63,25 +71,37 @@ class WorkerBee:
         """
         Process a single sub-task using the local AI model.
 
+        Subtasks whose text starts with 'MULTIMEDIA:<type>:<url>' are routed to
+        multimedia_handler — the Worker fetches the file over HTTP, runs the
+        recursive sub-sampling pipeline locally, and returns a text description.
+
         Args:
-            subtask_text: The sub-task to process (a text prompt)
+            subtask_text: The sub-task to process (text prompt, or multimedia marker)
 
         Returns:
             The AI model's response as a string
         """
-        prompt = f"""{subtask_text}"""
-
         console.print(f"  🐝 [{self.worker_id}] Processing: [italic]{subtask_text[:80]}{'...' if len(subtask_text) > 80 else ''}[/]")
 
-        result = self.ai.ask(
-            prompt=prompt,
-            model=self.model_name,
-            temperature=self.temperature
-        )
+        if _is_multimedia_tile(subtask_text):
+            import ollama
+            from multimedia_handler import handle_multimedia_tile
+            client = ollama.Client()
+            result = handle_multimedia_tile(subtask_text, client)
+        elif _is_multimedia(subtask_text):
+            import ollama
+            from multimedia_handler import handle_multimedia_subtask
+            client = ollama.Client()
+            result = handle_multimedia_subtask(subtask_text, client)
+        else:
+            result = self.ai.ask(
+                prompt=subtask_text,
+                model=self.model_name,
+                temperature=self.temperature,
+            )
 
         self.tasks_completed += 1
         console.print(f"  ✅ [{self.worker_id}] Done! ({len(result)} chars)")
-
         return result
 
     def run_from_website(self, api: 'BeehiveAPIClient', hive_id: int, poll_interval: int = 5):

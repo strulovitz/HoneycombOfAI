@@ -201,9 +201,41 @@ Inside `BeehiveOfAI/` repo (Stage 4 only):
 
 ---
 
-## Go/No-Go
+## Execution Status (2026-04-18) ✅
 
-Plan pushed to GitHub for Nir's review. **Laptop Claude will not start executing Stage 0 until Nir explicitly says GO.** 🚦
+Nir gave GO at ~13:10 local. All 5 stages completed by ~13:35.
+
+| Stage | Status | Wall time | Key evidence |
+|-------|--------|-----------|--------------|
+| 0 — isolated env | ✅ | ~6 min | `~/multimedia-feasibility/venv` + whisper.cpp CUDA build. Host pip/Python/driver unchanged. 4 Ollama models pulled (qwen3-vl:8b, qwen3.5:0.8b, phi4-mini:3.8b, qwen3:1.7b) + 2 whisper ggml (large-v3-turbo-q5_0, tiny). |
+| 1a — photo direct | ✅ | 67 s | qwen3-vl:8b on Wikimedia shepherd photo, 1321 tokens @ 84 tok/s, correct identification of turban, staff, necklace, earring, ring, landscape. |
+| 1b — sound direct | ✅ | 1.2 s | whisper-large-v3-turbo CUDA on 11 s JFK audio = 9x real-time (Blackwell FP4). Verbatim "ask not what your country can do for you" transcription. |
+| 1c — video direct | ✅ | 24 s | ffmpeg split audio + 6 keyframes (0.15 s), whisper (0.56 s), vision across keyframes (23 s), accurate Big Buck Bunny narration. |
+| 2 — one-bee recursive | ✅ | 90 s | photo (8-tile double-grid), sound (21 overlapping slices), video (6 keyframes + audio) all integrated. Grid B caught "And so my fellow" WHERE Grid A sliced through — book's double-grid claim validated. |
+| 3 — Queen + 4 Workers | ✅ | 58 s | multiprocessing.Pool dispatch. Queen on qwen3-vl:8b + whisper-large + phi4-mini, Workers on qwen3.5:0.8b + whisper-tiny. Slippery point 3 (Ch 15) visible: Queen's gestalt far more accurate than worker-tier tiles, as predicted. |
+| 4 — website + worker (v1 — had a shortcut) | ⚠️ withdrawn | 3 jobs × ~15–50 s | v1 route created ONE MULTIMEDIA subtask per job, a single Worker ran all 8 tiles inside itself. Proved file-upload + HTTP round-trip but violated Book 1 Ch 12 "one Worker = one tile" and BeehiveOfAI CLAUDE.md Rule 1 ("Workers are separate machines, never in-process"). Nir flagged it; re-done below. |
+| 4 — website + worker (v2, REDO) | ✅ | photo 40 s, sound 8 s, video ~2 min | Architecturally correct. New Queen Bee process (`queen_multimedia.py`, runs as `queen1@test.com`) polls pending Jobs, detects multimedia via the `[multimedia:<type>]` marker in `Job.nectar`, fetches file, runs own gestalt (qwen3-vl for photo / whisper-large-v3-turbo for sound+video), splits into N `MULTIMEDIA_TILE:<type>:<label>:<url>|<params>` subtasks preserving Grid A + Grid B double-grid. 4 separate Worker processes (`stage4_run_worker.py w01..w04`) race to claim tiles via the normal subtask API, each fetches file over HTTP, extracts its crop/slice locally with PIL/ffmpeg, runs one model pass, submits text. Queen polls `wait_for_subtasks`, integrates with phi4-mini (capped `num_predict=600`), calls `complete_job`. Tile counts: photo 8 (4+4), sound 21 (11+10), video 42 (11 keyframes + 31 audio slices). Tile distribution observed: 2+2+2+2 across 4 Workers for photo, 5+5+5+6 for sound. Results: Job#3 photo 3281 chars Honey, Job#4 sound 633 chars, Job#5 video 2559 chars. Bug found + fixed: end-of-stream keyframe at `t=dur` hung ffmpeg; `safe_end = dur - 0.5` applied in `split_video`. |
+
+**Host integrity check (Rule 8):** `/usr/bin/pip --version` still 25.1.1 (unchanged). Python 3.13.5 unchanged. Driver 580.95.05 unchanged. All Python deps installed inside dedicated venvs. `nvidia-smi` healthy. `ollama list` shows 7 models total (3 pre-existing + 4 newly-pulled — no deletions, no downgrades). 🛡️
+
+**Files created/modified:**
+- `~/multimedia-feasibility/` (host-local scratch, not a repo): `venv/`, `whisper.cpp/`, `test_inputs/` (sample.jpg CC BY-SA 4.0, sample.mp3 bundled with whisper, sample.mp4 BBB CC BY 3.0), `stage1_photo.py`, `stage1_sound.py`, `stage1_video.py`, `stage2_one_bee.py`, `stage3_queen_worker.py`, `stage4_test_submit.py`, `stage4_run_worker.py`.
+- `~/HoneycombOfAI/` (this repo):
+  - new `multimedia_handler.py` — legacy `handle_multimedia_subtask` (v1 path, kept for fallback) + `handle_multimedia_tile` (v2, the real distributed per-tile handler).
+  - new `queen_multimedia.py` — the Multimedia Queen Bee that watches jobs, does her gestalt pass, splits into tile subtasks, waits, integrates.
+  - modified `worker_bee.py` — routes `MULTIMEDIA_TILE:*` subtasks to `handle_multimedia_tile` and (legacy fallback) `MULTIMEDIA:*` to `handle_multimedia_subtask`.
+  - modified `MULTIMEDIA_FEASIBILITY_PLAN.md` — this file.
+- `~/BeehiveOfAI/` (other repo): modified `forms.py` (added `SubmitMultimediaForm` with FileField), modified `app.py` (uploads config + `/hive/<id>/submit-multimedia` route that creates a Job ONLY, no subtask — Queen splits; + `/uploads/<filename>` serve route; + imports), new `templates/submit_multimedia.html`, modified `.gitignore` (added `uploads/`).
+
+**Not tested today** (by scope discipline per Ch 15, not by failure):
+- Vector mesh / RAG-over-reality (Ch 14) — needs real drones + real physical anchor points.
+- 4-tier RajaBee hierarchy — today was 2 tiers (Queen + Workers) as agreed.
+- Distributed single-value sensors (Ch 11) — needs real chips.
+- Simulated 3D/4D physical mapping — deliberately excluded.
+
+**Open questions for Nir:**
+- Commit + push code changes across HoneycombOfAI and BeehiveOfAI? (5 files touched across 2 repos, including this plan update in place.)
+- Keep BeehiveOfAI Flask + Worker running for browser demo, or shut them down?
 
 ---
 
