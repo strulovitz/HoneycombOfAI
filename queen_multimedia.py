@@ -12,12 +12,17 @@ Per MULTIMEDIA_GESTALT_PLAN.md (commit 5da9d13):
   /no_think directive so the response is the motion description, not
   thinking tokens). Per-section descriptions collected as the visual gestalt.
 - Video audio: same section-based Queen gestalt as pure sound. Workers still
-  process 5-sec audio-slice tiles.
-- Video worker tiles: short video *clips* (3 s, Grid A at 0/3/6..., Grid B
-  at 1.5/4.5/...). Each Worker extracts its clip and runs qwen3-vl on a
-  2-FPS frame sequence from the clip, returning a motion description.
-  Workers see motion, not single frames.
-- Integration stays hierarchical when tile count exceeds CHUNK_SIZE.
+  process 5-sec audio slices (the audio slice = the sound-side Worker unit
+  reused for video's audio track).
+- Video Worker visual units: short video *clips* (3 s, Grid A at 0/3/6...,
+  Grid B at 1.5/4.5/...). Each Worker extracts its clip and runs qwen3-vl
+  on a 2-FPS frame sequence from the clip, returning a motion description.
+  Workers see motion, not single frames. Note: a video clip is a short time
+  window covering the WHOLE frame — it is NOT a spatial region of the
+  screen. Image tiles are spatial; video clips and audio slices are
+  temporal.
+- Integration stays hierarchical when the Worker-subtask count exceeds
+  CHUNK_SIZE.
 
 Run: python3 queen_multimedia.py
 Requires queen1@test.com credentials (queen of hive 1 per seed_data).
@@ -65,12 +70,15 @@ VIDEO_SECTION_SEC = 60.0
 VIDEO_SECTION_OFFSET = 30.0
 VIDEO_GESTALT_FPS = 1.0  # frames per second sampled by Queen across each video section
 
-# Worker-tier tile sizes.
-SOUND_SLICE_LEN = 5.0  # audio slices (also used inside video for speech detail)
+# Worker-tier unit sizes.
+# Terminology: image → tile (spatial); sound → slice (temporal);
+# video → clip (temporal, whole frame). Keep consistent; tiles are never
+# temporal, clips are never spatial.
+SOUND_SLICE_LEN = 5.0  # audio slice (also used inside video for speech detail)
 SOUND_SLICE_OFFSET = 2.5
 VIDEO_CLIP_LEN = 3.0
 VIDEO_CLIP_OFFSET = 1.5
-VIDEO_CLIP_SAMPLE_FPS = 2.0  # frames per second within each Worker clip
+VIDEO_CLIP_SAMPLE_FPS = 2.0  # frames per second within each Worker video clip
 
 
 # ---------- basic helpers ----------
@@ -138,9 +146,17 @@ def run_whisper(wav_path: Path) -> str:
     return r.stdout.strip()
 
 
-def make_tile_text(media_type: str, label: str, url: str, params: dict) -> str:
+def make_subtask_text(media_type: str, label: str, url: str, params: dict) -> str:
+    """Build the Worker subtask string. The 'MULTIMEDIA_TILE:' prefix is a
+    protocol-level routing key (preserved for wire compatibility with existing
+    Workers); the actual Worker unit carried inside is an image tile, sound
+    slice, video clip, or video audio slice, depending on media_type."""
     param_str = "|".join(f"{k}={v}" for k, v in params.items())
     return f"MULTIMEDIA_TILE:{media_type}:{label}:{url}|{param_str}"
+
+
+# Backwards-compatible alias so no caller breaks.
+make_tile_text = make_subtask_text
 
 
 # ---------- ffmpeg wrappers ----------
@@ -232,6 +248,8 @@ def section_grid(duration: float, section_sec: float, offset_sec: float):
 # ---------- PHOTO split (unchanged) ----------
 
 def split_photo(url: str, local_file: Path, client: ollama.Client) -> tuple[str, list[str]]:
+    # Image tiles = spatial regions of the photo (the word "tile" is correct
+    # here — these ARE small parts of the screen).
     img = Image.open(local_file).convert("RGB")
     W, H = img.size
     low = img.resize((W // 2, H // 2), Image.LANCZOS)
@@ -252,8 +270,8 @@ def split_photo(url: str, local_file: Path, client: ollama.Client) -> tuple[str,
     ]
     texts = []
     for label, (x1, y1, x2, y2) in tiles:
-        texts.append(make_tile_text("photo", label, url,
-                                    {"crop": f"{x1},{y1},{x2},{y2}"}))
+        texts.append(make_subtask_text("photo", label, url,
+                                       {"crop": f"{x1},{y1},{x2},{y2}"}))
     return gestalt, texts
 
 
@@ -277,7 +295,7 @@ def _queen_audio_gestalt(local_file: Path, dur: float, tdp: Path) -> str:
 
 
 def split_sound(url: str, local_file: Path) -> tuple[str, float, list[str]]:
-    """Return (gestalt_text, duration_sec, list_of_tile_subtask_texts)."""
+    """Return (gestalt_text, duration_sec, list_of_worker_subtask_texts)."""
     with tempfile.TemporaryDirectory() as td:
         tdp = Path(td)
         full_wav = tdp / "full.wav"
@@ -286,17 +304,17 @@ def split_sound(url: str, local_file: Path) -> tuple[str, float, list[str]]:
         console.print(f"  [cyan]sound duration {dur:.1f}s — running section-based Queen gestalt[/cyan]")
         gestalt = _queen_audio_gestalt(local_file, dur, tdp)
 
-    # Worker 5-sec slice tiles (unchanged — give the integrator fine-grained detail).
+    # Worker 5-sec audio slices (unchanged — give the integrator fine-grained speech detail).
     texts: list[str] = []
     s = 0.0
     while s + SOUND_SLICE_LEN <= dur:
-        texts.append(make_tile_text("sound", f"A-{s:.1f}", url,
-                                    {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
+        texts.append(make_subtask_text("sound", f"A-{s:.1f}", url,
+                                       {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
         s += SOUND_SLICE_LEN
     s = SOUND_SLICE_OFFSET
     while s + SOUND_SLICE_LEN <= dur:
-        texts.append(make_tile_text("sound", f"B-{s:.1f}", url,
-                                    {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
+        texts.append(make_subtask_text("sound", f"B-{s:.1f}", url,
+                                       {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
         s += SOUND_SLICE_LEN
     return gestalt, dur, texts
 
@@ -322,7 +340,7 @@ def _queen_visual_gestalt(local_file: Path, dur: float, client: ollama.Client,
             f"These are {len(frame_bytes)} frames from section {label} of a video, "
             f"sampled at 1 frame per second, covering {end - start:.0f} seconds in time order. "
             "Describe the motion, actions, scene changes, and who/what is present. "
-            "One short paragraph. No tile labels in the output.",
+            "One short paragraph. No section or clip labels in the output.",
             num_predict=500,
         )
         dt = time.monotonic() - t0
@@ -332,12 +350,15 @@ def _queen_visual_gestalt(local_file: Path, dur: float, client: ollama.Client,
 
 
 def split_video(url: str, local_file: Path, client: ollama.Client) -> tuple[str, str, list[str]]:
-    """Return (audio_gestalt, visual_gestalt, list_of_tile_subtask_texts).
+    """Return (audio_gestalt, visual_gestalt, list_of_worker_subtask_texts).
 
-    Tiles:
-      - Worker video-clip tiles: 3-sec clips, Grid A at 0/3/6..., Grid B at 1.5/4.5/...
-      - Worker video-audio tiles: 5-sec audio slices, same double grid
-    No more video-frame single-still tiles — those could not perceive motion.
+    Worker subtasks produced here:
+      - Video clips: 3-sec temporal windows of the WHOLE frame, Grid A at
+        0/3/6..., Grid B at 1.5/4.5/... Workers perceive motion. Clips are
+        temporal; they are not spatial sub-regions of the screen.
+      - Video audio slices: 5-sec audio slices from the video's audio track,
+        same Grid A + Grid B as the pure-sound path.
+    No more video-frame single-still units — those could not perceive motion.
     """
     with tempfile.TemporaryDirectory() as td:
         tdp = Path(td)
@@ -347,32 +368,32 @@ def split_video(url: str, local_file: Path, client: ollama.Client) -> tuple[str,
         visual_gestalt = _queen_visual_gestalt(local_file, dur, client, tdp)
 
     texts: list[str] = []
-    # Video CLIP tiles (Worker motion perception)
+    # Video CLIPS (Worker motion perception, whole frame, short time window).
     s = 0.0
     while s + VIDEO_CLIP_LEN <= dur:
-        texts.append(make_tile_text("video-clip", f"CL-A-{s:.1f}", url,
-                                    {"start": f"{s:.1f}",
-                                     "duration": f"{VIDEO_CLIP_LEN:.1f}",
-                                     "fps": f"{VIDEO_CLIP_SAMPLE_FPS:.1f}"}))
+        texts.append(make_subtask_text("video-clip", f"CL-A-{s:.1f}", url,
+                                       {"start": f"{s:.1f}",
+                                        "duration": f"{VIDEO_CLIP_LEN:.1f}",
+                                        "fps": f"{VIDEO_CLIP_SAMPLE_FPS:.1f}"}))
         s += VIDEO_CLIP_LEN
     s = VIDEO_CLIP_OFFSET
     while s + VIDEO_CLIP_LEN <= dur:
-        texts.append(make_tile_text("video-clip", f"CL-B-{s:.1f}", url,
-                                    {"start": f"{s:.1f}",
-                                     "duration": f"{VIDEO_CLIP_LEN:.1f}",
-                                     "fps": f"{VIDEO_CLIP_SAMPLE_FPS:.1f}"}))
+        texts.append(make_subtask_text("video-clip", f"CL-B-{s:.1f}", url,
+                                       {"start": f"{s:.1f}",
+                                        "duration": f"{VIDEO_CLIP_LEN:.1f}",
+                                        "fps": f"{VIDEO_CLIP_SAMPLE_FPS:.1f}"}))
         s += VIDEO_CLIP_LEN
 
-    # Video AUDIO slice tiles (Worker speech detail — unchanged)
+    # Video AUDIO SLICES (Worker speech detail — 5-sec audio slices, unchanged)
     s = 0.0
     while s + SOUND_SLICE_LEN <= dur:
-        texts.append(make_tile_text("video-audio", f"AU-A-{s:.1f}", url,
-                                    {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
+        texts.append(make_subtask_text("video-audio", f"AU-A-{s:.1f}", url,
+                                       {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
         s += SOUND_SLICE_LEN
     s = SOUND_SLICE_OFFSET
     while s + SOUND_SLICE_LEN <= dur:
-        texts.append(make_tile_text("video-audio", f"AU-B-{s:.1f}", url,
-                                    {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
+        texts.append(make_subtask_text("video-audio", f"AU-B-{s:.1f}", url,
+                                       {"start": f"{s:.1f}", "duration": f"{SOUND_SLICE_LEN:.1f}"}))
         s += SOUND_SLICE_LEN
 
     return audio_gestalt, visual_gestalt, texts
@@ -380,17 +401,22 @@ def split_video(url: str, local_file: Path, client: ollama.Client) -> tuple[str,
 
 # ---------- hierarchical integration (phi4-mini) ----------
 
-CHUNK_SIZE = 20  # tile lines per sub-integration call
+CHUNK_SIZE = 20  # Worker-subtask report lines per sub-integration call
 
 
-def _tile_label(subtask_text: str) -> str:
+def _subtask_label(subtask_text: str) -> str:
     m = re.match(r"MULTIMEDIA_TILE:[^:]+:([^:]+):", subtask_text)
     return m.group(1) if m else "?"
 
 
-def _tile_timestamp(label: str) -> float:
+def _subtask_timestamp(label: str) -> float:
     m = re.search(r"-(\d+(?:\.\d+)?)(?:s)?$", label)
     return float(m.group(1)) if m else 0.0
+
+
+# Backwards-compatible aliases.
+_tile_label = _subtask_label
+_tile_timestamp = _subtask_timestamp
 
 
 def _chunk_sub_integrate_sound(client, chunk_lines, chunk_idx, n_chunks):
@@ -411,7 +437,7 @@ def _chunk_sub_integrate_video(client, chunk_lines, chunk_idx, n_chunks):
 Reports in this window mix motion-perceived video clip descriptions (CL-*) and audio slice transcriptions (AU-*):
 {body}
 
-Produce ONE coherent paragraph (2-4 sentences) of what happens in this time window — both what is seen (motion, actions) and what is heard. Merge duplicates across overlapping A/B tiles."""
+Produce ONE coherent paragraph (2-4 sentences) of what happens in this time window — both what is seen (motion, actions) and what is heard. Merge duplicates across overlapping A/B clips and slices."""
     return queen_text(client, prompt, num_predict=300)
 
 
@@ -447,11 +473,12 @@ Write one coherent narrative that COVERS THE ENTIRE VIDEO from start to finish. 
 
 
 def integrate(client: ollama.Client, media_type: str, gestalt_vis: str,
-              gestalt_aud: str, tile_results: list[dict]) -> str:
+              gestalt_aud: str, worker_results: list[dict]) -> str:
     if media_type == "photo":
+        # Photo path: Worker units are image TILES (spatial regions).
         lines = []
-        for tr in tile_results:
-            label = _tile_label(tr["subtask"])
+        for tr in worker_results:
+            label = _subtask_label(tr["subtask"])
             lines.append(f"- {label} (worker {tr.get('worker_id')}): "
                          f"{tr['result'].splitlines()[0][:220]}")
         tile_section = "\n".join(lines)
@@ -460,20 +487,20 @@ def integrate(client: ollama.Client, media_type: str, gestalt_vis: str,
 Your own gestalt (Queen ran qwen3-vl on a low-resolution copy of the whole photo):
 {gestalt_vis}
 
-Tile reports (Grid A = 4 quadrants A-UL/A-UR/A-LL/A-LR; Grid B = 4 straddling tiles B-TOP-MID/B-BOT-MID/B-LEFT-MID/B-RIGHT-MID at 25% offsets to recover anything Grid A sliced in half):
+Image tile reports (Grid A = 4 quadrants A-UL/A-UR/A-LL/A-LR; Grid B = 4 straddling tiles B-TOP-MID/B-BOT-MID/B-LEFT-MID/B-RIGHT-MID at 25% offsets to recover anything Grid A sliced in half):
 {tile_section}
 
 Produce one coherent description. Use your own gestalt as the spatial map, place tile-detail onto it, merge duplicates across overlapping A and B tiles. Do NOT emit tile labels in the output. 5-8 sentences."""
         return queen_text(client, prompt, num_predict=800)
 
-    # Sound / video — sort tile reports by time and chunk for hierarchical integration.
-    sorted_tiles = sorted(
-        tile_results,
-        key=lambda tr: _tile_timestamp(_tile_label(tr["subtask"])),
+    # Sound / video — sort Worker reports by time and chunk for hierarchical integration.
+    sorted_results = sorted(
+        worker_results,
+        key=lambda tr: _subtask_timestamp(_subtask_label(tr["subtask"])),
     )
     lines = []
-    for tr in sorted_tiles:
-        label = _tile_label(tr["subtask"])
+    for tr in sorted_results:
+        label = _subtask_label(tr["subtask"])
         snippet = tr["result"].splitlines()[0][:220] if tr["result"] else ""
         lines.append(f"- {label}: {snippet}")
 
@@ -499,15 +526,15 @@ Your own visual gestalt (qwen3-vl multi-frame calls per 1-minute section, 1 FPS)
 Your own audio gestalt (whisper-large on 2x-varispeed 1-minute sections of the audio track):
 {gestalt_aud}
 
-Tile reports mixing motion-perceived video clips (CL-*) and audio slices (AU-*) in time order:
+Worker reports mixing motion-perceived video clips (CL-*) and audio slices (AU-*) in time order:
 {body}
 
-Produce a coherent narrative from start to finish, weaving visual and audio. Do NOT emit tile labels. 4-8 sentences."""
+Produce a coherent narrative from start to finish, weaving visual and audio. Do NOT emit clip or slice labels. 4-8 sentences."""
         return queen_text(client, prompt, num_predict=1500)
 
     # Hierarchical path.
     chunks = [lines[i:i + CHUNK_SIZE] for i in range(0, len(lines), CHUNK_SIZE)]
-    console.print(f"  [cyan]Hierarchical integration: {len(lines)} tiles -> {len(chunks)} chunks[/cyan]")
+    console.print(f"  [cyan]Hierarchical integration: {len(lines)} Worker reports -> {len(chunks)} chunks[/cyan]")
     chunk_paragraphs: list[str] = []
     sub_fn = _chunk_sub_integrate_sound if media_type == "sound" else _chunk_sub_integrate_video
     for idx, chunk in enumerate(chunks):
@@ -565,24 +592,27 @@ def process_job(api: BeehiveAPIClient, client: ollama.Client, job_data: dict) ->
 
         gestalt_vis, gestalt_aud = "", ""
         if media_type == "photo":
-            gestalt_vis, tile_texts = split_photo(url, local, client)
+            gestalt_vis, subtask_texts = split_photo(url, local, client)
         elif media_type == "sound":
-            gestalt_aud, _, tile_texts = split_sound(url, local)
+            gestalt_aud, _, subtask_texts = split_sound(url, local)
         else:  # video
-            gestalt_aud, gestalt_vis, tile_texts = split_video(url, local, client)
+            gestalt_aud, gestalt_vis, subtask_texts = split_video(url, local, client)
 
-        console.print(f"  [cyan]Queen split into {len(tile_texts)} tile subtasks[/cyan]")
+        # "Worker subtask" = whatever modality-specific unit each Worker picks up:
+        # an image tile (spatial), a sound slice (temporal), a video clip (temporal
+        # whole-frame), or a video audio slice.
+        console.print(f"  [cyan]Queen split into {len(subtask_texts)} Worker subtasks[/cyan]")
 
-    created = api.create_subtasks(job_id, tile_texts)
+    created = api.create_subtasks(job_id, subtask_texts)
     subtask_ids = [c["id"] for c in created]
     api.update_job_status(job_id, "processing")
     console.print(f"  [cyan]Created {len(subtask_ids)} MULTIMEDIA_TILE subtasks — waiting for Workers...[/cyan]")
 
-    tile_results = wait_for_subtasks(api, job_id, subtask_ids, timeout=SUBTASK_TIMEOUT)
+    worker_results = wait_for_subtasks(api, job_id, subtask_ids, timeout=SUBTASK_TIMEOUT)
 
     api.update_job_status(job_id, "combining")
-    console.print(f"  [cyan]Queen integrating {len(tile_results)} tile reports onto her gestalt...[/cyan]")
-    honey = integrate(client, media_type, gestalt_vis, gestalt_aud, tile_results)
+    console.print(f"  [cyan]Queen integrating {len(worker_results)} Worker reports onto her gestalt...[/cyan]")
+    honey = integrate(client, media_type, gestalt_vis, gestalt_aud, worker_results)
 
     api.complete_job(job_id, honey)
     console.print(f"[bold green]✅ Job #{job_id} complete — {len(honey)} chars of Honey delivered.[/bold green]")

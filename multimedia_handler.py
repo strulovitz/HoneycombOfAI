@@ -8,12 +8,15 @@ and routes them to this module. Each handler:
   3. Returns a text description
 
 The recursive trick: give the Queen-tier model a low-fidelity GESTALT view,
-give tile-level workers high-fidelity SLICES, integrate child reports onto
-the Queen's spatial/temporal map.
+give Worker-tier processes high-fidelity pieces of the input (image tiles for
+photos — spatial regions; audio slices for sound — temporal windows; video
+clips for video — temporal windows covering the whole frame), integrate child
+reports onto the Queen's spatial/temporal map.
 
 For Phase 5 Stage 4 MVP, one Worker runs the whole recursive pipeline sequentially
 (Chapter 15's "cheap-test-bench" configuration). A future phase would distribute
-the tiles to multiple Worker Bees via sub-sub-subtasks over the BeehiveOfAI API.
+the per-modality Worker subtasks to multiple Worker Bees via sub-sub-subtasks over
+the BeehiveOfAI API.
 """
 import io
 import math
@@ -27,8 +30,8 @@ import requests
 from PIL import Image
 
 # Models — aligned with ~/claude-memory and the VM cluster setup.
-# Inside the Worker, we play both Queen and tile-worker roles sequentially.
-VISION_MODEL = "qwen3-vl:8b"          # Queen-tier vision (also used for tiles on 24GB GPU)
+# Inside the Worker, we play both Queen and Worker roles sequentially.
+VISION_MODEL = "qwen3-vl:8b"          # Queen-tier vision (also used for Worker subtasks on 24GB GPU)
 TEXT_MODEL = "phi4-mini:3.8b"         # Text reasoner for integration
 
 # whisper.cpp (CUDA-built) is expected at ~/multimedia-feasibility/whisper.cpp
@@ -88,7 +91,7 @@ def handle_photo(jpeg_path: Path, client) -> str:
     low = img.resize((W // 2, H // 2), Image.LANCZOS)
     gestalt = _run_ollama_vision(client, low, "Describe the overall scene, layout, and what you see. 3-4 sentences.")
 
-    # 2. Double-grid tiles (4 grid-A quadrants + 4 grid-B straddling tiles)
+    # 2. Double-grid image tiles (4 Grid A quadrants + 4 Grid B straddling tiles — these ARE spatial regions of the photo)
     qw, qh = W // 4, H // 4
     tiles = [
         ("A-UL", img.crop((0, 0, W // 2, H // 2))),
@@ -107,12 +110,12 @@ def handle_photo(jpeg_path: Path, client) -> str:
 
     # 3. Integrate
     tile_section = "\n".join(f"- {n}: {d}" for n, d in tile_descs)
-    prompt = f"""Integrate a photo's vision analysis from a hive of tile-workers.
+    prompt = f"""Integrate a photo's vision analysis from a hive of tile-Workers.
 
-Gestalt (low-resolution overview):
+Gestalt (low-resolution overview of the whole photo):
 {gestalt}
 
-Tile reports (grid A = 4 quadrants; grid B = 4 tiles at 25% offset to recover anything grid A sliced in half):
+Image tile reports (Grid A = 4 quadrants; Grid B = 4 tiles at 25% offset to recover anything Grid A sliced in half):
 {tile_section}
 
 Produce one coherent description. Use the gestalt as your spatial map. Merge duplicates across overlapping tiles. Do not emit tile labels. 5-8 sentences."""
@@ -208,10 +211,11 @@ Produce a coherent 3-6 sentence narrative combining audio and visuals."""
 # ---------- dispatcher ----------
 
 def handle_multimedia_subtask(subtask_text: str, ollama_client) -> str:
-    """Legacy single-Worker path (old Stage 4 shortcut — do ALL tiles inside one Worker).
+    """Legacy single-Worker path (old Stage 4 shortcut — do ALL pieces inside one Worker).
 
     Retained for fallback only. The real distributed path is `handle_multimedia_tile`
-    below (one Worker = one tile, as Book 1 Chapters 12-14 describe).
+    below (one Worker = one modality-specific piece: an image tile, a sound slice,
+    a video clip, or a video audio slice — as Book 1 Chapters 12-14 describe).
     """
     if not subtask_text.startswith("MULTIMEDIA:"):
         raise ValueError(f"Not a multimedia subtask: {subtask_text[:80]}")
@@ -245,7 +249,14 @@ def handle_multimedia_subtask(subtask_text: str, ollama_client) -> str:
     return f"{result}\n\n---\n[multimedia:{media_type}] fetched {fetch_s:.2f}s, processed {process_s:.2f}s"
 
 
-# ---------- MULTIMEDIA_TILE (one Worker = one tile, distributed) ----------
+# ---------- MULTIMEDIA_TILE protocol (one Worker = one modality-specific piece, distributed) ----------
+#
+# Terminology: the MULTIMEDIA_TILE: prefix is an opaque routing key preserved
+# for wire compatibility. Inside, the concrete Worker unit depends on media_type:
+#   photo       → image tile (a spatial region of the photo)
+#   sound       → audio slice (a temporal window of audio)
+#   video-clip  → video clip  (a short temporal window of the whole frame)
+#   video-audio → audio slice (a temporal window of the video's audio track)
 
 def _parse_params(params_str: str) -> dict:
     """Parse 'k1=v1|k2=v2' (pipe-separated) into a dict. Pipe is used instead of
@@ -262,7 +273,14 @@ def _parse_params(params_str: str) -> dict:
 
 
 def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
-    """Process ONE tile of a multimedia input.
+    """Process ONE Worker unit of a multimedia input.
+
+    The Worker unit shape depends on the media_type carried in the subtask:
+      - photo       → image tile (spatial crop of the photo)
+      - sound       → audio slice (temporal window of audio)
+      - video-clip  → video clip (temporal window covering the whole frame;
+                      NOT a spatial crop of the screen)
+      - video-audio → audio slice (temporal window of the video's audio track)
 
     Subtask text formats (emitted by the multimedia Queen):
       MULTIMEDIA_TILE:photo:<label>:<url>|crop=x1,y1,x2,y2
@@ -271,13 +289,13 @@ def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
       MULTIMEDIA_TILE:video-audio:<label>:<url>|start=<s>|duration=<s>
 
     The Worker fetches the FULL source file from <url>, extracts the specified
-    slice or clip locally, and runs ONE model pass on it. For video-clip tiles,
+    tile/slice/clip locally, and runs ONE model pass on it. For video clips,
     "ONE model pass" means a single multi-frame qwen3-vl call on the frames
     sampled from inside the clip, so the Worker perceives MOTION rather than a
-    still photograph. Returns the tile's text.
+    still photograph. Returns the Worker-unit's text.
     """
     if not subtask_text.startswith("MULTIMEDIA_TILE:"):
-        raise ValueError(f"Not a tile subtask: {subtask_text[:80]}")
+        raise ValueError(f"Not a Worker-subtask: {subtask_text[:80]}")
 
     # Split on ':' but only the first 4 parts — the URL may contain colons (scheme)
     header, _, rest = subtask_text.partition(":")   # drops "MULTIMEDIA_TILE"
@@ -304,7 +322,7 @@ def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
         if media_type == "photo":
             crop = params.get("crop")
             if not crop:
-                raise ValueError(f"photo tile missing crop param: {subtask_text[:120]}")
+                raise ValueError(f"photo tile missing crop param (image tiles are spatial, need x1,y1,x2,y2): {subtask_text[:120]}")
             x1, y1, x2, y2 = (int(v) for v in crop.split(","))
             img = Image.open(src).convert("RGB").crop((x1, y1, x2, y2))
             desc = _run_ollama_vision(
@@ -367,7 +385,10 @@ def handle_multimedia_tile(subtask_text: str, ollama_client) -> str:
             ], capture_output=True, check=True)
             desc = _run_whisper(slice_wav)
         else:
-            raise ValueError(f"Unknown tile media_type: {media_type}")
+            raise ValueError(f"Unknown Worker-subtask media_type: {media_type}")
         process_s = time.monotonic() - t0
 
-    return f"{desc}\n\n---\n[tile {media_type}:{label}] fetched {fetch_s:.2f}s, processed {process_s:.2f}s"
+    # Label the trailer with the actual Worker-unit kind rather than the generic "tile".
+    unit_kind = {"photo": "image tile", "sound": "audio slice",
+                 "video-clip": "video clip", "video-audio": "audio slice"}.get(media_type, media_type)
+    return f"{desc}\n\n---\n[{unit_kind} {label}] fetched {fetch_s:.2f}s, processed {process_s:.2f}s"

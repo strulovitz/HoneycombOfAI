@@ -3,6 +3,8 @@
 **Created:** 2026-04-18 by Laptop Linux Claude, after planning conversation with Nir.
 **Repo home:** `HoneycombOfAI/MULTIMEDIA_FEASIBILITY_PLAN.md` (canonical — edit in place per Golden Rule 2).
 
+**Terminology note (added later in the same day):** this document uses the word "tile" generically for the Worker subtask unit across all modalities, because that was the vocabulary in use when the plan was written. The refined vocabulary, settled on later and used in `MULTIMEDIA_GESTALT_PLAN.md` and the updated code, distinguishes **image tile** (spatial region of a photo), **sound slice** (temporal audio window), **video clip** (temporal window of a video's whole frame — NOT a spatial crop), and **video audio slice** (temporal window of a video's audio track). Where this plan says "tile" generically, read "Worker subtask" unless the context is specifically an image tile.
+
 ---
 
 ## Mission 🎯

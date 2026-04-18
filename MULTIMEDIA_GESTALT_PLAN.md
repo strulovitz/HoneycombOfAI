@@ -16,7 +16,7 @@ The first draft of this file was wrong in specific ways that Nir caught. Written
 
 - I shipped the original single-frame Workers for video without stopping to ask whether a hive claiming to perceive video should be able to see motion, which was an obvious question any thinking reviewer would have raised before any code merged. This plan makes motion perception a non-negotiable at the Worker tier.
 
-- When Nir proposed the correct fix for video by extending his sound insight, I slid back into tile-thinking five minutes later and had to be corrected again in the same conversation. This plan holds the "clip Workers, not frame Workers, not no Workers" framing throughout.
+- When Nir proposed the correct fix for video by extending his sound insight, I slid back into tile-thinking five minutes later and had to be corrected again in the same conversation. This plan holds the "clip Workers, not frame Workers, not no Workers" framing throughout — and uses the word *clip* for the video Worker unit, not *tile* (a video clip is a short time window of the whole frame; it is not a spatial region of the screen; image tiles are spatial, video clips and audio slices are temporal).
 
 - I picked Netflix-style pitch-preserving `ffmpeg atempo` for the sound fix and wrote it into the first draft of this plan document, when Nir had explicitly told me old-movie fast-forward — which is varispeed, a different operation Nir chose deliberately and I overrode without admitting I was overriding it. This plan uses varispeed (`asetrate`).
 
@@ -60,7 +60,7 @@ Current code runs `queen_whisper(low_wav)` on a whole-recording copy downsampled
 
 ### V2 — Video Workers perceive single frames, not motion
 
-Each `video-frame` tile has `{"timestamp": t}`; the Worker extracts exactly one frame and runs single-image vision. The integrator reconstructs motion from position deltas across timestamps, which works on slow monotonic motion and fails quietly between keyframes. Caught by Nir's billiard-ball example.
+Each `video-frame` Worker subtask has `{"timestamp": t}`; the Worker extracts exactly one still frame and runs single-image vision. The integrator reconstructs motion from position deltas across timestamps, which works on slow monotonic motion and fails quietly between keyframes. Caught by Nir's billiard-ball example.
 
 ### V3 — Video audio gestalt has the same disease as S1
 
@@ -104,19 +104,19 @@ Budget: default target is ≤ 30 frames per call. If `duration * 1 FPS > 30`, Qu
 
 Model choice: first try `qwen3-vl:8b`, which we already have pulled. Verified in tonight's (still to run) Check 2 — does it actually perceive motion across a frame sequence, or describe frames as independent stills? If it fails, fallback is `minicpm-v:8b` (confirmed video-capable per Google AI search).
 
-### Fix for V2 — Upgrade Worker video tiles from single frames to short clips; keep Workers distributed
+### Fix for V2 — Upgrade the Worker video unit from single frame to short clip; keep Workers distributed
 
 **This replaces the first draft's "delete single-frame Workers entirely," which quietly centralized all video visual work at the Queen and broke the distributed architecture.**
 
-Video Workers stay distributed. Each Worker tile is a **short video clip — 3 seconds at full framerate** — not a single frame.
+Video Workers stay distributed. Each Worker unit is a **video clip — a 3-second temporal window covering the whole frame** — not a single frame, and not a spatial sub-region of the screen (the word *tile* would be wrong here; image tiles are spatial, video clips and audio slices are temporal).
 
 Mechanics:
-- Queen creates `video-clip` tile subtasks (replacing the old `video-frame` type). Each tile carries `{"start": t, "duration": 3.0}` rather than `{"timestamp": t}`.
+- Queen creates `video-clip` Worker subtasks (replacing the old `video-frame` type). Each subtask carries `{"start": t, "duration": 3.0}` rather than `{"timestamp": t}`.
 - Grid A clips at t = 0, 3, 6, 9, ... s. Grid B clips at t = 1.5, 4.5, 7.5, ... s. Double-grid in time, same principle as audio slices.
 - Worker's `handle_multimedia_tile` for `video-clip` type: extract the clip with `ffmpeg -ss start -t duration`, extract ~6 frames from the clip at 2 FPS, pass the frame sequence to a **video-capable vision model** in one Ollama call, return a motion description ("a white rabbit walks toward the apple and picks it up" rather than "a rabbit, a rabbit, a rabbit, a rabbit").
 - Worker-tier video model: start with `qwen3-vl:8b` (same one we already have and that the Queen uses). If qwen3-vl fails the Worker-clip honesty check, pull `minicpm-v:8b` or `qwen2.5-vl:7b` and retry. Whichever model is chosen, it is used for both Queen visual gestalt and Worker clip perception — that keeps deployment simple and lets Ollama keep a single model resident.
 
-This preserves distribution (Workers are real processes handling real tiles over HTTP) AND gives motion perception (each Worker sees a clip, not a still).
+This preserves distribution (Workers are real processes handling real clips over HTTP) AND gives motion perception (each Worker sees a clip, not a still).
 
 ### Queen integration prompt changes
 
@@ -149,9 +149,9 @@ No production code is modified until Checks 2 and 3 pass.
 
 3. Rewrite `split_video`:
    - Add `queen_visual_gestalt_video()` — 1-FPS sampling across whole video, chunk into 30-sec sub-sections if needed, combine section descriptions.
-   - Replace `video-frame` tile creation with `video-clip` tile creation (Grid A at 3-s steps, Grid B at 1.5-s offset, duration 3 s).
+   - Replace `video-frame` Worker subtask creation with `video-clip` Worker subtask creation (Grid A at 3-s steps, Grid B at 1.5-s offset, duration 3 s). A video clip is a temporal window of the whole frame, not a spatial region of the screen — distinct from an image tile.
    - Apply `varispeed_audio` to the audio track for the audio gestalt (same logic as sound).
-   - Keep `video-audio` slice tiles unchanged.
+   - Keep `video-audio` audio-slice Worker subtasks unchanged.
    - Return tuple now has both `audio_gestalt` and `visual_gestalt` populated.
 
 4. Update `multimedia_handler.py`:
@@ -179,7 +179,7 @@ No production code is modified until Checks 2 and 3 pass.
 - `~/HoneycombOfAI/MULTIMEDIA_GESTALT_PLAN.md` — this file.
 
 Not touched:
-- `worker_bee.py` — dispatch logic for MULTIMEDIA_TILE subtasks is still correct (only the tile content changes).
+- `worker_bee.py` — dispatch logic for `MULTIMEDIA_TILE:*` subtasks is still correct (the protocol prefix stays; only the Worker-unit content inside it changes, from `video-frame` to `video-clip`).
 - `BeehiveOfAI/` — upload route and status page remain correct.
 - Photo path, audio-slice Worker path — correct.
 
@@ -188,7 +188,7 @@ Not touched:
 ## Success criteria
 
 - Sound 3-min test: Queen gestalt generated via section-based 2× varispeed (3 Grid A + 2 Grid B sections of 1 minute each, each compressed to ~30 s, each fed to whisper-large as one single-pass forward call). No reliance on whisper's internal sliding-window chunking. Final Honey covers full duration.
-- Video 30-sec test: Queen visual gestalt in one ollama call; Worker clip tiles produce motion descriptions ("walks toward X", "picks up Y"); final Honey describes motion and events, not stills.
+- Video 30-sec test: Queen visual gestalt in one ollama call; Worker video clips produce motion descriptions ("walks toward X", "picks up Y"); final Honey describes motion and events, not stills.
 - Video audio: same as sound, honest about when varispeed helps and when it does not.
 - Host CUDA/Python/pip unchanged; if an additional video-capable model is pulled (minicpm-v-8b or qwen2.5-vl-7b as fallback from Check 2/3), it is named in the commit.
 - No regression on photo test or audio-slice Workers.
